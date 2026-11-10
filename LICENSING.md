@@ -21,11 +21,11 @@ Shared games should state their license in the package manifest. For assets you 
 you are responsible for having the right to share them; Studio will ask for a license and credit when
 assets are imported.
 
-## SDK schemas, type definitions and templates
+## SDK: game format types and validator
 
-So that there is never doubt for tool and extension authors, the game-format JSON Schemas, the public
-SDK type definitions and the starter templates will be published under the **MIT License** when the
-`packages/sdk` package is introduced (Milestone 2). Until then no such files exist.
+So that there is never doubt for tool and extension authors, `packages/sdk` — the game-format type
+definitions and validator — is published under the **MIT License** (`packages/sdk/LICENSE`). Starter
+templates will be too.
 
 ## Bundled games
 

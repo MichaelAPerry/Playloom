@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@playloom/core": "workspace:*",
+    "@playloom/runtime": "workspace:*",
+    "@playloom/sdk": "workspace:*",
     "@playloom/simulator": "workspace:*"
   }
 }

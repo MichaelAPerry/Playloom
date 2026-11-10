@@ -30,6 +30,9 @@ Tests live next to each package in `test/` and run under Vitest in Node — no b
 
 - `packages/core/test` — the identity tracker with synthetic detections, the Lite motion analyser with
   synthetic images, filters, body measurement, MediaPipe landmark mapping, profile selection, settings.
+- `packages/sdk/test` — the game validator against valid, malformed and hostile game files.
+- `packages/runtime/test` — full rounds of both bundled games and every kind of rule, played by simulated
+  players through the real engine.
 - `packages/simulator/test` — simulated players driven through the complete engine: two-player
   independence, gestures, loss and recovery, crossing, occlusion, calibration, mirroring, and
   record/replay equivalence.
@@ -41,4 +44,5 @@ them into automated browser tests is a listed task.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs install, type-check, tests, model fetch and build on Ubuntu and Windows
-for pushes to `main` and for pull requests.
+for pushes to `main` and for pull requests. `.github/workflows/pages.yml` publishes the playground to
+GitHub Pages on pushes to `main`.

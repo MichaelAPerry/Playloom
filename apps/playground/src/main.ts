@@ -19,6 +19,10 @@ import {
   SimulatorSource,
   type SimulatorControls,
 } from "@playloom/simulator";
+import { GameRuntime, renderToCanvas, WebAudioPlayer } from "@playloom/runtime";
+import { parseGame, validateGame, type GameDefinition } from "@playloom/sdk";
+import moleMayhem from "../../../games/mole-mayhem/game.json";
+import sliceParty from "../../../games/slice-party/game.json";
 import { runCompatibilityCheck } from "./benchmark";
 import { draw } from "./draw";
 
@@ -43,6 +47,83 @@ let source: PoseSource | null = null;
 let simControls: SimulatorControls | null = null;
 let recorder: PoseRecorder | null = null;
 let busy = false;
+
+// ---- Games --------------------------------------------------------------------------------------
+
+const BUNDLED: Record<string, unknown> = { "mole-mayhem": moleMayhem, "slice-party": sliceParty };
+const audio = new WebAudioPlayer();
+const gameSelect = $<HTMLSelectElement>("game");
+let runtime: GameRuntime | null = null;
+
+// Browsers only allow sound after the player has done something on the page.
+for (const type of ["pointerdown", "keydown"] as const) window.addEventListener(type, () => audio.unlock(), { once: true });
+$<HTMLInputElement>("sound").addEventListener("change", (e) => (audio.volume = (e.target as HTMLInputElement).checked ? 0.8 : 0));
+
+function startGame(game: GameDefinition | null): void {
+  runtime?.stop();
+  runtime = null;
+  if (game) {
+    runtime = new GameRuntime(game, api, { audio });
+    runtime.start();
+    $("game-info").textContent = `${game.meta.name} ${game.meta.version} — ${game.meta.description ?? ""}`;
+  } else {
+    $("game-info").textContent = "Games are data files run by the Playloom runtime.";
+  }
+  $("pause").textContent = "Pause";
+}
+
+gameSelect.addEventListener("change", () => {
+  const data = BUNDLED[gameSelect.value];
+  if (!data) return startGame(null);
+  // Bundled games go through the same validation as anyone else's.
+  const result = validateGame(data);
+  if (result.ok) startGame(result.game);
+  else showNotice(`This game could not be loaded: ${result.issues[0]!.path} ${result.issues[0]!.message}`, true);
+});
+$("restart").addEventListener("click", () => runtime?.start());
+$("pause").addEventListener("click", () => {
+  if (!runtime) return;
+  if (runtime.pauseReason === "user") runtime.resume();
+  else runtime.pause();
+  $("pause").textContent = runtime.pauseReason === "user" ? "Pause" : "Resume";
+});
+const gameFile = $<HTMLInputElement>("game-file");
+$("load-game").addEventListener("click", () => gameFile.click());
+gameFile.addEventListener("change", async () => {
+  const file = gameFile.files?.[0];
+  gameFile.value = "";
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) return showNotice("That file is too large to be a Playloom game.", true);
+  const result = parseGame(await file.text());
+  if (!result.ok) {
+    const first = result.issues.slice(0, 3).map((i) => `${i.path} ${i.message}`).join("; ");
+    return showNotice(`This game could not be loaded (${result.issues.length} problem${result.issues.length === 1 ? "" : "s"}): ${first}`, true);
+  }
+  showNotice(null);
+  gameSelect.value = "";
+  startGame(result.game);
+  log(`loaded ${result.game.meta.name}`, "sys");
+});
+
+function gameBanner(): boolean {
+  if (!runtime) return false;
+  if (runtime.state === "ended" && runtime.result) {
+    const r = runtime.result;
+    const title = r.kind === "winner" ? `Player ${r.player} wins!` : r.kind === "tie" ? "It's a tie!" : r.won ? "You did it together!" : "Out of time!";
+    const scores = [...runtime.scores.entries()].map(([p, s]) => `Player ${p}: ${Math.round(s)}`).join("   ");
+    setBanner(title, scores, [["Play again", () => runtime?.start()]]);
+    return true;
+  }
+  if (runtime.state === "paused" && runtime.pauseReason === "players") {
+    setBanner("Waiting for players", `This game needs ${runtime.game.requires.players.min} players in view.`);
+    return true;
+  }
+  if (runtime.state === "paused" && runtime.pauseReason === "user") {
+    setBanner("Paused", "", [["Resume", () => $("pause").click()]]);
+    return true;
+  }
+  return false;
+}
 
 // ---- Sources ------------------------------------------------------------------------------------
 
@@ -174,10 +255,11 @@ function updateBanner(): void {
       [["Cancel", () => engine.cancelCalibration()]],
     );
   } else if (api.status.needsAction) {
+    // Identity comes before anything the game wants to say: the game is paused until it is settled.
     setBanner("Who is who?", "Step back to your own side — or tell me if you have swapped places.", [
       ["We swapped places", () => engine.confirmIdentities()],
     ]);
-  } else {
+  } else if (!gameBanner()) {
     setBanner(null);
   }
 }
@@ -312,14 +394,22 @@ function stat(label: string, value: string, warn = false): string {
 }
 
 let lastStats = 0;
+let lastFrame = 0;
 function frame(now: number): void {
   renderRate.tick(now);
-  draw(ctx, api, {
-    video: currentVideo(),
-    mirror: mirrorBox.checked,
-    overlay: overlayBox.checked,
-    selectedSimPlayer: simControls?.selectedPlayer ?? 0,
-  });
+  const elapsed = lastFrame ? (now - lastFrame) / 1000 : 0;
+  lastFrame = now;
+  if (runtime) {
+    runtime.update(elapsed);
+    renderToCanvas(ctx, runtime, { video: currentVideo(), mirror: mirrorBox.checked });
+  } else {
+    draw(ctx, api, {
+      video: currentVideo(),
+      mirror: mirrorBox.checked,
+      overlay: overlayBox.checked,
+      selectedSimPlayer: simControls?.selectedPlayer ?? 0,
+    });
+  }
   updateBanner();
   if (now - lastStats > 250) {
     lastStats = now;
@@ -355,4 +445,4 @@ void useSource("simulator");
 requestAnimationFrame(frame);
 
 // Exposed for automated browser tests and for poking around in the console.
-(window as unknown as { playloom: unknown }).playloom = { engine, api, getSource: () => source };
+(window as unknown as { playloom: unknown }).playloom = { engine, api, getSource: () => source, getRuntime: () => runtime };

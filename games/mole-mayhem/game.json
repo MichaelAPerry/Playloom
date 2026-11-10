@@ -1,0 +1,529 @@
+{
+  "formatVersion": 1,
+  "meta": {
+    "id": "org.playloom.mole-mayhem",
+    "name": "Mole Mayhem",
+    "version": "0.1.0",
+    "description": "Two players race to bonk the most moles before the clock runs out.",
+    "author": "Playloom contributors",
+    "license": "CC-BY-SA-4.0",
+    "mode": "competitive"
+  },
+  "requires": {
+    "players": {
+      "min": 2,
+      "max": 2
+    },
+    "tracking": "hands"
+  },
+  "startScene": "garden",
+  "scenes": [
+    {
+      "id": "garden",
+      "size": [
+        1280,
+        720
+      ],
+      "background": "#4c8f3f",
+      "objects": [
+        {
+          "id": "hole-1",
+          "type": "sprite",
+          "x": 240,
+          "y": 378,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-1",
+          "type": "sprite",
+          "x": 240,
+          "y": 330,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-2",
+          "type": "sprite",
+          "x": 506,
+          "y": 378,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-2",
+          "type": "sprite",
+          "x": 506,
+          "y": 330,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-3",
+          "type": "sprite",
+          "x": 774,
+          "y": 378,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-3",
+          "type": "sprite",
+          "x": 774,
+          "y": 330,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-4",
+          "type": "sprite",
+          "x": 1040,
+          "y": 378,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-4",
+          "type": "sprite",
+          "x": 1040,
+          "y": 330,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-5",
+          "type": "sprite",
+          "x": 240,
+          "y": 608,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-5",
+          "type": "sprite",
+          "x": 240,
+          "y": 560,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-6",
+          "type": "sprite",
+          "x": 506,
+          "y": 608,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-6",
+          "type": "sprite",
+          "x": 506,
+          "y": 560,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-7",
+          "type": "sprite",
+          "x": 774,
+          "y": 608,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-7",
+          "type": "sprite",
+          "x": 774,
+          "y": 560,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "hole-8",
+          "type": "sprite",
+          "x": 1040,
+          "y": 608,
+          "width": 190,
+          "height": 70,
+          "shape": "circle",
+          "color": "#2b1d14",
+          "layer": 0,
+          "tags": [
+            "hole"
+          ]
+        },
+        {
+          "id": "mole-8",
+          "type": "sprite",
+          "x": 1040,
+          "y": 560,
+          "width": 130,
+          "height": 130,
+          "shape": "circle",
+          "color": "#a9744f",
+          "glyph": "••",
+          "layer": 1,
+          "visible": false,
+          "tags": [
+            "mole"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "gold-1",
+          "type": "sprite",
+          "x": 506,
+          "y": 324,
+          "width": 140,
+          "height": 140,
+          "shape": "star",
+          "color": "#ffd166",
+          "layer": 2,
+          "visible": false,
+          "tags": [
+            "gold"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "gold-2",
+          "type": "sprite",
+          "x": 774,
+          "y": 554,
+          "width": 140,
+          "height": 140,
+          "shape": "star",
+          "color": "#ffd166",
+          "layer": 2,
+          "visible": false,
+          "tags": [
+            "gold"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70
+          }
+        },
+        {
+          "id": "clock",
+          "type": "timer",
+          "x": 0,
+          "y": 0,
+          "seconds": 60
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "x": 640,
+          "y": 60,
+          "text": "{timer:clock}",
+          "size": 72,
+          "color": "#ffffff",
+          "align": "center",
+          "layer": 5
+        },
+        {
+          "id": "score-1",
+          "type": "text",
+          "x": 40,
+          "y": 60,
+          "text": "Player 1: {score:1}",
+          "size": 48,
+          "color": "#ff9f1c",
+          "align": "left",
+          "layer": 5
+        },
+        {
+          "id": "score-2",
+          "type": "text",
+          "x": 1240,
+          "y": 60,
+          "text": "Player 2: {score:2}",
+          "size": 48,
+          "color": "#3ec5ff",
+          "align": "right",
+          "layer": 5
+        },
+        {
+          "id": "hint",
+          "type": "text",
+          "x": 640,
+          "y": 150,
+          "text": "Bonk the moles! Gold stars are worth 30.",
+          "size": 34,
+          "color": "#e8f5d0",
+          "align": "center",
+          "layer": 5
+        }
+      ],
+      "rules": [
+        {
+          "name": "A mole pops up",
+          "when": {
+            "type": "every",
+            "seconds": 0.7,
+            "jitter": 0.25
+          },
+          "then": [
+            {
+              "do": "show",
+              "object": {
+                "random": {
+                  "tag": "mole",
+                  "state": "hidden"
+                }
+              },
+              "forSeconds": 1.6
+            }
+          ]
+        },
+        {
+          "name": "A gold star appears",
+          "when": {
+            "type": "every",
+            "seconds": 5,
+            "jitter": 1.5
+          },
+          "then": [
+            {
+              "do": "show",
+              "object": {
+                "random": {
+                  "tag": "gold",
+                  "state": "hidden"
+                }
+              },
+              "forSeconds": 1.1
+            },
+            {
+              "do": "play-sound",
+              "sound": "tick"
+            }
+          ]
+        },
+        {
+          "name": "Hide the hint",
+          "when": {
+            "type": "every",
+            "seconds": 6
+          },
+          "then": [
+            {
+              "do": "hide",
+              "object": "hint"
+            }
+          ]
+        },
+        {
+          "name": "A player bonks a mole",
+          "when": {
+            "type": "hand-touches",
+            "player": "any",
+            "object": {
+              "tag": "mole"
+            }
+          },
+          "then": [
+            {
+              "do": "add-score",
+              "player": "$player",
+              "amount": 10
+            },
+            {
+              "do": "effect",
+              "object": "$object",
+              "effect": "burst"
+            },
+            {
+              "do": "hide",
+              "object": "$object"
+            },
+            {
+              "do": "play-sound",
+              "sound": "bonk"
+            }
+          ]
+        },
+        {
+          "name": "A player catches a gold star",
+          "when": {
+            "type": "hand-touches",
+            "player": "any",
+            "object": {
+              "tag": "gold"
+            }
+          },
+          "then": [
+            {
+              "do": "add-score",
+              "player": "$player",
+              "amount": 30
+            },
+            {
+              "do": "effect",
+              "object": "$object",
+              "effect": "burst"
+            },
+            {
+              "do": "hide",
+              "object": "$object"
+            },
+            {
+              "do": "play-sound",
+              "sound": "ding"
+            }
+          ]
+        },
+        {
+          "name": "Time is up",
+          "when": {
+            "type": "timer-ends",
+            "timer": "clock"
+          },
+          "then": [
+            {
+              "do": "play-sound",
+              "sound": "win"
+            },
+            {
+              "do": "end-game",
+              "result": "highest-score"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ Nothing is listed as working unless it was run.
 |---|---|
 | Architecture assessment and decisions | Done; D1–D4 approved. **D7 (MediaPipe telemetry) needs an owner decision.** |
 | 1 — Motion engine and simulator | **Software complete and tested with simulated and synthetic input. Not yet tested with a physical camera or real people.** |
-| 2 — First games and shared runtime | Not started |
+| 2 — First games and shared runtime | **Software complete and tested with simulated players. Not yet played by real people with a camera.** |
 | 3 — Console | Not started |
 | 4 — Android TV | Not started |
 | 5 — Studio | Not started |
@@ -59,7 +59,7 @@ All commands were run on 2026-11-10 on Linux x86-64, Node 22.23.
 | Playground, simulator, production build, headless Chromium 153 | Two players joined; mouse, jump and hands-up worked; 30 Hz tracking, 60 fps rendering; no console errors |
 | Playground, simulator, dev server | Same; no console errors under the Content-Security-Policy |
 | Playground, camera modes, synthetic two-person video | See table below; no requests to any other host |
-| CI workflow | **Written but not yet run** — it runs on pull requests and pushes to `main`, and neither has happened |
+| CI and web-demo workflows | **Written but not yet run** — it runs on pull requests and pushes to `main`, and neither has happened |
 
 Measurements from the synthetic-video run (cloud container, 4 virtual cores, no GPU — not representative
 of real PCs):
@@ -98,9 +98,66 @@ The compatibility check measured all three and recommended **Standard** on the p
 
 - Decide **D7** ([decisions.md](architecture/decisions.md)).
 - Try the playground with two people and a webcam, run the compatibility check, and share the report —
-  this is the missing part of the Milestone 1 acceptance test.
+  this is the missing part of the Milestone 1 acceptance test. No install is needed once the web demo
+  is published: merge to `main`, set **Settings → Pages → Source** to **GitHub Actions**, and open the
+  address the "Publish web demo" workflow reports (see the README).
 - Enable *Private vulnerability reporting* in the repository's security settings, which
   [SECURITY.md](../SECURITY.md) refers to.
+
+## Milestone 2 — First playable games and shared runtime
+
+### Delivered
+
+| Deliverable | Where | Notes |
+|---|---|---|
+| Game API | `packages/core` motion API + `packages/runtime` | Games receive input only through the motion API |
+| Scene/object data format | `packages/sdk/src/format.ts`, [game-format.md](game-format.md) | Version 1: scenes, sprites, text, timers, templates, variables, requirements |
+| Validation of untrusted games | `packages/sdk/src/validate.ts` | Closed vocabulary, reference checks, limits; unknown properties are errors |
+| Visual-rule runtime | `packages/runtime/src/runtime.ts` | 8 triggers, 4 condition types, 15 actions; deterministic; no code execution |
+| Rendering and sound | `render-canvas.ts`, `audio.ts` | Canvas 2D; eight synthesised sounds original to Playloom |
+| Two original games | `games/mole-mayhem`, `games/slice-party` | **Both are plain data files** — no game-specific code exists anywhere |
+| Independent scoring | runtime | Per-player scores; `$player` attributes each touch to whoever made it |
+| Competitive and cooperative | runtime | Mole Mayhem: highest score wins. Slice Party: shared team goal. |
+| Lifecycle | runtime | Start, user pause/resume, restart, end with result; automatic pause when a player is missing or identity is in doubt |
+| Playing games | `apps/playground` | Choose a bundled game or open a game file; results and pause prompts |
+
+### Acceptance criterion
+
+> Two playable games use the shared API, and at least one has its behavior represented through
+> portable, serializable rules rather than hard-coded game-specific logic.
+
+**Met, with simulated players.** Both games are JSON documents interpreted by the same runtime. Full
+rounds were played by simulated players through the real tracking pipeline in automated tests, and both
+games were played in a browser with a mouse-driven simulated player (scores of 100 and 70 reached, no
+console errors). **Not verified:** play by two real people with a camera — whether the games are fun,
+fair and physically comfortable is unknown.
+
+### Test evidence (2026-11-10)
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 95 of 95 passed (9 files): 13 validator tests, 16 runtime and playthrough tests, 66 from Milestone 1 |
+| `pnpm build` | Passed |
+| Browser run of both games, production build, headless Chromium | Scoring, effects, HUD and file loading worked; a malformed game file was rejected with a readable message |
+
+### Product choices made here that the owner may want to change
+
+- **Slice Party is cooperative** (team goal of 300 in 60 seconds) so that both modes are exercised. The
+  brief did not specify. Changing it to competitive is an edit to one rule in its JSON file.
+- Game art is built-in shapes and colours; there are no image assets yet.
+- Round length (60 s), scores and timings are first guesses, untested with players.
+
+### Known limitations
+
+1. No imported images, audio files or sprite animation; no `.playloom` package container yet.
+2. No published JSON Schema file; the TypeScript validator is the single source of truth. (A schema
+   validator library that generates code at run time would be blocked by Playloom's own security
+   policy, so the validator is hand-written.)
+3. Movement is constant velocity plus gravity; there is no bouncing or friction.
+4. Sound has only been exercised through a recording stub in tests; it has not been listened to.
+5. Lite mode can play both games in principle (they need only hands), but this has not been tried.
+6. The playground remains a developer tool, not the Console.
 
 ## Next
 
@@ -112,6 +169,7 @@ Finishing Milestone 1:
 4. Automated browser tests for the playground, including a camera test with a synthetic video.
 5. Tune thresholds from recordings of real play, once recordings exist.
 
-Milestone 2 (after owner review of Milestone 1): game format JSON Schema and validator in
-`packages/sdk`; scene, object and rules runtime in `packages/runtime`; the first two games, at least one
-defined entirely by rules.
+Milestone 3 — Console: fullscreen child-friendly launcher, game library and local installation,
+player setup flow, settings, compatibility check on first run, remote/gamepad navigation, and Electron
+packaging for Windows and Linux. The image/audio asset pipeline and package container are needed for
+local installation and will be built first.

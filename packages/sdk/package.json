@@ -1,0 +1,8 @@
+{
+  "name": "@playloom/sdk",
+  "version": "0.1.0",
+  "description": "Playloom game format: type definitions and validator",
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" }
+}

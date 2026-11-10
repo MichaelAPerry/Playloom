@@ -1,0 +1,454 @@
+{
+  "formatVersion": 1,
+  "meta": {
+    "id": "org.playloom.slice-party",
+    "name": "Slice Party",
+    "version": "0.1.0",
+    "description": "Work together: slice enough flying fruit to reach the team goal, and do not touch the bombs.",
+    "author": "Playloom contributors",
+    "license": "CC-BY-SA-4.0",
+    "mode": "cooperative"
+  },
+  "requires": {
+    "players": {
+      "min": 2,
+      "max": 2
+    },
+    "tracking": "hands"
+  },
+  "variables": [
+    {
+      "id": "goal",
+      "initial": 300
+    },
+    {
+      "id": "sliced",
+      "initial": 0
+    }
+  ],
+  "startScene": "kitchen",
+  "scenes": [
+    {
+      "id": "kitchen",
+      "size": [
+        1280,
+        720
+      ],
+      "background": "#232842",
+      "objects": [
+        {
+          "id": "clock",
+          "type": "timer",
+          "x": 0,
+          "y": 0,
+          "seconds": 60
+        },
+        {
+          "id": "time",
+          "type": "text",
+          "x": 640,
+          "y": 60,
+          "text": "{timer:clock}",
+          "size": 72,
+          "color": "#ffffff",
+          "align": "center",
+          "layer": 5
+        },
+        {
+          "id": "team",
+          "type": "text",
+          "x": 640,
+          "y": 128,
+          "text": "Team: {score:total} / {var:goal}",
+          "size": 44,
+          "color": "#ffd166",
+          "align": "center",
+          "layer": 5
+        },
+        {
+          "id": "score-1",
+          "type": "text",
+          "x": 40,
+          "y": 60,
+          "text": "Player 1: {score:1}",
+          "size": 40,
+          "color": "#ff9f1c",
+          "align": "left",
+          "layer": 5
+        },
+        {
+          "id": "score-2",
+          "type": "text",
+          "x": 1240,
+          "y": 60,
+          "text": "Player 2: {score:2}",
+          "size": 40,
+          "color": "#3ec5ff",
+          "align": "right",
+          "layer": 5
+        },
+        {
+          "id": "sliced",
+          "type": "text",
+          "x": 40,
+          "y": 680,
+          "text": "Sliced: {var:sliced}",
+          "size": 32,
+          "color": "#cfd6ea",
+          "align": "left",
+          "layer": 5
+        },
+        {
+          "id": "hint",
+          "type": "text",
+          "x": 640,
+          "y": 210,
+          "text": "Swipe fast through the fruit. Keep away from the bombs!",
+          "size": 34,
+          "color": "#e6e9f5",
+          "align": "center",
+          "layer": 5
+        }
+      ],
+      "templates": [
+        {
+          "id": "melon",
+          "type": "sprite",
+          "x": 0,
+          "y": 0,
+          "width": 120,
+          "height": 120,
+          "shape": "circle",
+          "color": "#ff5d73",
+          "layer": 1,
+          "gravity": 900,
+          "spin": 140,
+          "tags": [
+            "fruit"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 70.0
+          }
+        },
+        {
+          "id": "lime",
+          "type": "sprite",
+          "x": 0,
+          "y": 0,
+          "width": 96,
+          "height": 96,
+          "shape": "circle",
+          "color": "#9be564",
+          "layer": 1,
+          "gravity": 900,
+          "spin": 140,
+          "tags": [
+            "fruit"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 58.0
+          }
+        },
+        {
+          "id": "starfruit",
+          "type": "sprite",
+          "x": 0,
+          "y": 0,
+          "width": 124,
+          "height": 124,
+          "shape": "star",
+          "color": "#ffd166",
+          "layer": 1,
+          "gravity": 900,
+          "spin": 140,
+          "tags": [
+            "fruit"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 72.0
+          }
+        },
+        {
+          "id": "bomb",
+          "type": "sprite",
+          "x": 0,
+          "y": 0,
+          "width": 104,
+          "height": 104,
+          "shape": "diamond",
+          "color": "#3a3f55",
+          "glyph": "!",
+          "layer": 1,
+          "gravity": 900,
+          "spin": 60,
+          "tags": [
+            "bomb"
+          ],
+          "collider": {
+            "shape": "circle",
+            "radius": 48
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "Toss a melon",
+          "when": {
+            "type": "every",
+            "seconds": 1.1,
+            "jitter": 0.3
+          },
+          "then": [
+            {
+              "do": "spawn",
+              "template": "melon",
+              "x": {
+                "random": [
+                  160,
+                  1120
+                ]
+              },
+              "y": 770,
+              "vx": {
+                "random": [
+                  -160,
+                  160
+                ]
+              },
+              "vy": {
+                "random": [
+                  -1160,
+                  -960
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toss a lime",
+          "when": {
+            "type": "every",
+            "seconds": 1.5,
+            "jitter": 0.4
+          },
+          "then": [
+            {
+              "do": "spawn",
+              "template": "lime",
+              "x": {
+                "random": [
+                  160,
+                  1120
+                ]
+              },
+              "y": 770,
+              "vx": {
+                "random": [
+                  -160,
+                  160
+                ]
+              },
+              "vy": {
+                "random": [
+                  -1160,
+                  -960
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toss a starfruit",
+          "when": {
+            "type": "every",
+            "seconds": 2.3,
+            "jitter": 0.6
+          },
+          "then": [
+            {
+              "do": "spawn",
+              "template": "starfruit",
+              "x": {
+                "random": [
+                  160,
+                  1120
+                ]
+              },
+              "y": 770,
+              "vx": {
+                "random": [
+                  -160,
+                  160
+                ]
+              },
+              "vy": {
+                "random": [
+                  -1160,
+                  -960
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toss a bomb",
+          "when": {
+            "type": "every",
+            "seconds": 4.5,
+            "jitter": 1.5
+          },
+          "then": [
+            {
+              "do": "spawn",
+              "template": "bomb",
+              "x": {
+                "random": [
+                  160,
+                  1120
+                ]
+              },
+              "y": 770,
+              "vx": {
+                "random": [
+                  -160,
+                  160
+                ]
+              },
+              "vy": {
+                "random": [
+                  -1160,
+                  -960
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hide the hint",
+          "when": {
+            "type": "every",
+            "seconds": 6
+          },
+          "then": [
+            {
+              "do": "hide",
+              "object": "hint"
+            }
+          ]
+        },
+        {
+          "name": "A player slices a fruit",
+          "when": {
+            "type": "hand-touches",
+            "player": "any",
+            "object": {
+              "tag": "fruit"
+            },
+            "minSpeed": 350
+          },
+          "then": [
+            {
+              "do": "add-score",
+              "player": "$player",
+              "amount": 10
+            },
+            {
+              "do": "change-variable",
+              "variable": "sliced",
+              "by": 1
+            },
+            {
+              "do": "effect",
+              "object": "$object",
+              "effect": "burst"
+            },
+            {
+              "do": "destroy",
+              "object": "$object"
+            },
+            {
+              "do": "play-sound",
+              "sound": "pop"
+            }
+          ]
+        },
+        {
+          "name": "A player touches a bomb",
+          "when": {
+            "type": "hand-touches",
+            "player": "any",
+            "object": {
+              "tag": "bomb"
+            }
+          },
+          "then": [
+            {
+              "do": "add-score",
+              "player": "$player",
+              "amount": -20
+            },
+            {
+              "do": "effect",
+              "object": "$object",
+              "effect": "burst"
+            },
+            {
+              "do": "destroy",
+              "object": "$object"
+            },
+            {
+              "do": "play-sound",
+              "sound": "buzz"
+            }
+          ]
+        },
+        {
+          "name": "The team reaches the goal",
+          "when": {
+            "type": "when-true",
+            "condition": {
+              "type": "compare",
+              "left": {
+                "score": "total"
+              },
+              "op": ">=",
+              "right": {
+                "var": "goal"
+              }
+            }
+          },
+          "then": [
+            {
+              "do": "play-sound",
+              "sound": "win"
+            },
+            {
+              "do": "end-game",
+              "result": "team-win"
+            }
+          ]
+        },
+        {
+          "name": "Time is up",
+          "when": {
+            "type": "timer-ends",
+            "timer": "clock"
+          },
+          "then": [
+            {
+              "do": "play-sound",
+              "sound": "lose"
+            },
+            {
+              "do": "end-game",
+              "result": "team-lose"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

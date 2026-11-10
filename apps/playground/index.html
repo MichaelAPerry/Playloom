@@ -30,6 +30,25 @@
         <h1>Playloom <small>Motion Playground</small></h1>
 
         <fieldset>
+          <legend>Game</legend>
+          <label>Play
+            <select id="game">
+              <option value="">No game — motion test</option>
+              <option value="mole-mayhem">Mole Mayhem (compete)</option>
+              <option value="slice-party">Slice Party (team)</option>
+            </select>
+          </label>
+          <div class="row">
+            <button id="restart">Restart</button>
+            <button id="pause">Pause</button>
+            <button id="load-game">Open game file…</button>
+            <input type="file" id="game-file" accept=".json,application/json" hidden />
+          </div>
+          <label class="check"><input type="checkbox" id="sound" checked /> Sound</label>
+          <p class="hint" id="game-info">Games are data files run by the Playloom runtime.</p>
+        </fieldset>
+
+        <fieldset>
           <legend>Input</legend>
           <label>Source
             <select id="source">
