@@ -4,5 +4,5 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@mediapipe/tasks-vision": "^1.2.2" }
+  "dependencies": { "@mediapipe/tasks-vision": "0.10.34" }
 }

@@ -109,7 +109,7 @@ describe("profile recommendation", () => {
     renderFps: 60,
     backends: [],
   };
-  const pose = (trackingHz: number, latencyMs = 60) => ({ backend: "mediapipe-pose", trackingHz, latencyMs, processingMs: 1, playersSeen: 2, skeleton: true });
+  const pose = (trackingHz: number, latencyMs = 60) => ({ backend: "mediapipe-pose-gpu", trackingHz, latencyMs, processingMs: 1, playersSeen: 2, skeleton: true });
   const lite = { backend: "motion-lite", trackingHz: 30, latencyMs: 20, processingMs: 1, playersSeen: 2, skeleton: false };
 
   it("recommends Enhanced only for fast, low-latency skeleton tracking", () => {

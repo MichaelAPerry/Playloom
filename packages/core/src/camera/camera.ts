@@ -103,11 +103,14 @@ export function onVideoFrame(video: HTMLVideoElement, fn: (captureTime: number) 
   type RVFC = (cb: (now: number, meta: { captureTime?: number; expectedDisplayTime: number }) => void) => number;
   const rvfc = (video as unknown as { requestVideoFrameCallback?: RVFC }).requestVideoFrameCallback?.bind(video);
   if (rvfc) {
-    const loop = (now: number, meta: { captureTime?: number }): void => {
+    const loop = (_now: number, meta: { captureTime?: number }): void => {
       if (stopped) return;
-      // captureTime is not on the same clock in every browser; only trust it when it is plausible.
-      const capture = meta.captureTime !== undefined && meta.captureTime <= now && now - meta.captureTime < 1000 ? meta.captureTime : now;
-      fn(capture);
+      // When this runs late (a slow model keeps the thread busy) the video element already shows
+      // a newer picture than the callback describes, so the metadata is only trusted when fresh.
+      // captureTime is also not on the same clock in every browser.
+      const start = performance.now();
+      const fresh = meta.captureTime !== undefined && meta.captureTime <= start && start - meta.captureTime < 250;
+      fn(fresh ? meta.captureTime! : start);
       rvfc(loop);
     };
     rvfc(loop);

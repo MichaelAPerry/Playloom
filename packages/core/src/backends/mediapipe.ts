@@ -6,6 +6,10 @@ import type { FrameSink, KeypointName, PoseSource, RawPerson, Skeleton, SourceCa
  *
  * The model and WASM runtime are loaded from local paths (see `pnpm fetch-models`), never from a
  * CDN, so tracking works offline.
+ *
+ * Privacy: @mediapipe/tasks-vision is pinned to 0.10.34 on purpose. From 1.0.0 the library sends
+ * usage metrics to Google with no documented way to turn that off, which Playloom does not allow.
+ * See docs/privacy.md before changing the version.
  */
 
 /** MediaPipe's 33 landmark indices mapped to Playloom keypoint names. */
@@ -96,7 +100,7 @@ export class MediaPipePoseSource implements PoseSource {
 
   constructor(options: Partial<MediaPipeOptions> = {}) {
     this.options = { ...DEFAULT_MEDIAPIPE_OPTIONS, ...options };
-    this.id = "mediapipe-pose";
+    this.id = `mediapipe-pose-${this.options.delegate.toLowerCase()}`;
     this.capabilities = { skeleton: true, hands: "precise", fixedRegions: false, maxPeople: this.options.maxPeople };
   }
 

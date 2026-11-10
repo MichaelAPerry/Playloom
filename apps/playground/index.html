@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Offline-first: nothing is loaded from the network, and nothing may be sent to it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' blob: data:; worker-src 'self' blob:"
+    />
+    <title>Playloom Motion Playground</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="stage-wrap">
+        <div class="stage" id="stage">
+          <canvas id="canvas" width="1280" height="720"></canvas>
+          <div class="banner" id="banner" hidden>
+            <strong id="banner-title"></strong>
+            <span id="banner-text"></span>
+            <div class="banner-actions" id="banner-actions"></div>
+          </div>
+          <div class="notice" id="notice" hidden></div>
+        </div>
+        <div class="stats" id="stats" aria-live="off"></div>
+      </section>
+
+      <aside class="panel">
+        <h1>Playloom <small>Motion Playground</small></h1>
+
+        <fieldset>
+          <legend>Input</legend>
+          <label>Source
+            <select id="source">
+              <option value="simulator">Simulator (no camera needed)</option>
+              <option value="mediapipe-gpu">Camera — skeleton tracking (graphics card)</option>
+              <option value="mediapipe-cpu">Camera — skeleton tracking (processor only)</option>
+              <option value="lite">Camera — Lite motion regions</option>
+            </select>
+          </label>
+          <label id="camera-row" hidden>Camera
+            <select id="camera"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="mirror" checked /> Mirror picture</label>
+          <label class="check"><input type="checkbox" id="overlay" checked /> Debug skeleton overlay</label>
+          <label>Gesture sensitivity <output id="sensitivity-out">1.0</output>
+            <input type="range" id="sensitivity" min="0.5" max="2" step="0.1" value="1" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Players</legend>
+          <div class="row">
+            <button id="calibrate" class="primary">Player setup</button>
+            <button id="swap">Swap 1 ↔ 2</button>
+          </div>
+          <p class="hint" id="calibration-info">Stand side by side. Player 1 is on the left.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Tools</legend>
+          <div class="row">
+            <button id="record">Record</button>
+            <button id="play">Play recording…</button>
+            <input type="file" id="file" accept=".jsonl,.txt" hidden />
+          </div>
+          <div class="row">
+            <button id="benchmark">Run compatibility check</button>
+          </div>
+          <pre class="report" id="report" hidden></pre>
+          <button id="save-report" hidden>Save report</button>
+        </fieldset>
+
+        <fieldset id="sim-help">
+          <legend>Simulator controls</legend>
+          <dl id="keys"></dl>
+        </fieldset>
+
+        <fieldset>
+          <legend>Motion events</legend>
+          <ol class="log" id="log"></ol>
+        </fieldset>
+      </aside>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

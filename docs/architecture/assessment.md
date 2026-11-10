@@ -1,7 +1,11 @@
 # Playloom architecture assessment
 
-Status: **proposal awaiting owner decision** (2026-11-10).
-Decisions are recorded in [decisions.md](decisions.md) once the owner approves them.
+Status: D1–D4 **approved by the owner on 2026-11-10**; see [decisions.md](decisions.md).
+
+> **Correction after testing (2026-11-10).** This assessment recommended MediaPipe partly because it is
+> actively maintained. Testing then showed that releases from 1.0.0 onward send usage metrics to Google.
+> Playloom is pinned to 0.10.34, the last release without that code, and the long-term choice is open
+> as decision D7. Read the MediaPipe rows below with that in mind.
 
 This document covers the ten points of the initial execution instructions: tracking-library research,
 cross-platform architecture, the shared game format, the low-end tracking recommendation, Android USB
