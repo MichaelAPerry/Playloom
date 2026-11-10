@@ -24,7 +24,7 @@ Nothing is listed as working unless it was run.
 | Deliverable | Where | Notes |
 |---|---|---|
 | Webcam input | `packages/core/src/camera` | `getUserMedia`, camera selection, clear error categories |
-| Two-player tracking | `backends/mediapipe.ts`, `tracking/identity.ts` | MediaPipe Pose Landmarker (two poses) feeding Playloom's identity tracker |
+| Two-player tracking | `backends/mediapipe.ts`, `backends/movenet.ts`, `tracking/identity.ts` | MediaPipe Pose Landmarker (two poses) or MoveNet MultiPose (up to six; playground only) feeding Playloom's identity tracker |
 | Stable player assignment | `tracking/identity.ts` | Position, velocity and size matching; explicit `uncertain` state; recovery after loss; never swaps silently when it can detect doubt |
 | Gesture recognition | `gestures/recognizer.ts` | Jump, duck, lean, hands up, each hand raised, swipes; thresholds scale with body size; adjustable sensitivity |
 | Performance monitoring | `performance/` | Tracking rate, latency, engine time; compatibility report; profile selection from measurements |
@@ -88,8 +88,13 @@ The compatibility check measured all three and recommended **Standard** on the p
 5. **Lite mode is basic.** Hand cursors appear only while something moves, there is no jump, duck or
    lean, and a moving background (a pet, a television) counts as movement. It was tested with synthetic
    images and one synthetic video.
-6. **MoveNet backend not built.** Decision D3 calls for it as a benchmarked alternative; only MediaPipe
-   and Lite exist.
+6. **MoveNet backend is playground-only and slower with two people here.** MoveNet MultiPose Lightning
+   (ONNX Runtime Web, decision D9) runs in a worker and is measured by the compatibility check, but the
+   Console does not offer it yet. In the 4-core, no-GPU test container it tracked a two-person video at
+   8–10 Hz against 13–15 Hz for MediaPipe on the processor; its advantage (cost nearly flat in the
+   number of people) was not measured with three or more people. It has wrists but no fingertips
+   (`hands: "coarse"`), is single-threaded, and has not been tried on a real GPU, a weak PC or a physical
+   camera.
 7. **MediaPipe is pinned to an old release** (0.10.34) to avoid usage reporting — decision D7.
 8. **Latency is estimated** from frame-callback timing, not measured end to end with a camera.
 9. **No interpolation between tracking updates.** At low tracking rates, cursors move in visible steps.
@@ -235,7 +240,7 @@ Tested: `pnpm check` (typecheck, tests, builds) with the simulator tests for fid
 
 Carried over (pose estimation has already been moved into a worker):
 
-1. MoveNet MultiPose backend (decision D3), measured by the device check.
+1. Offer the MoveNet backend (built, decision D9) in the Console's device check and Automatic mode; measure it with three or more people and on real weak hardware.
 2. Automated browser tests for the Console and playground in CI.
 3. Tuning from real play, once the owner has tried the web demo with a camera.
 

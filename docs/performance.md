@@ -18,8 +18,8 @@ with players.
 ## Running the check
 
 In the playground, press **Run compatibility check**. It needs a camera, takes about 20 seconds, and
-works best with two people in view. Each backend is started in turn — pose estimation on the graphics
-card, pose estimation on the processor, and Lite — given 1.5 s to warm up and then measured for 4 s.
+works best with two people in view. Each backend is started in turn — MediaPipe pose estimation on the
+graphics card, MediaPipe on the processor, MoveNet MultiPose (processor, WebAssembly) and Lite — given 1.5 s to warm up and then measured for 4 s.
 
 The report contains:
 
@@ -46,3 +46,9 @@ The report contains:
   `renderFps`. (Under the development server it falls back to the main thread.)
 - The graphics-card path can be *slower* than the processor path on machines without a real GPU driver
   (software rendering). That is why both are measured.
+- MoveNet MultiPose finds everyone in one pass, so its cost barely grows with the number of people,
+  whereas MediaPipe's grows per person. It runs single-threaded in WebAssembly and has no fingertip
+  points (hands are derived from the wrists). In the development container (4 cores, no GPU) it ran at
+  8–10 Hz with two people against 13–15 Hz for MediaPipe on the processor, so it is not automatically the
+  faster choice; the check decides per device. Details and method: decision D9 in
+  [architecture/decisions.md](architecture/decisions.md).

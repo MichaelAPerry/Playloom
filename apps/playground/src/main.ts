@@ -4,6 +4,7 @@ import {
   MediaPipePoseSource,
   MotionEngine,
   MotionLiteSource,
+  MoveNetPoseSource,
   RateMeter,
   runCompatibilityCheck,
   saveSettings,
@@ -161,6 +162,8 @@ function recordable(inner: PoseSource): PoseSource {
 
 const makeMediaPipe = (delegate: "GPU" | "CPU" = "GPU"): MediaPipePoseSource =>
   new MediaPipePoseSource({ delegate, camera: { deviceId: cameraSelect.value || undefined, width: 640, height: 480 } });
+const makeMoveNet = (): MoveNetPoseSource =>
+  new MoveNetPoseSource({ camera: { deviceId: cameraSelect.value || undefined, width: 640, height: 480 } });
 const makeLite = (): MotionLiteSource => new MotionLiteSource({ camera: { deviceId: cameraSelect.value || undefined } });
 
 function currentVideo(): HTMLVideoElement | null {
@@ -178,6 +181,7 @@ async function useSource(kind: string, playback?: PlaybackSource): Promise<void>
     if (playback) source = playback;
     else if (kind === "mediapipe-gpu") source = makeMediaPipe("GPU");
     else if (kind === "mediapipe-cpu") source = makeMediaPipe("CPU");
+    else if (kind === "movenet") source = makeMoveNet();
     else if (kind === "lite") source = makeLite();
     else {
       const sim = new SimulatorSource();
@@ -393,6 +397,7 @@ $("benchmark").addEventListener("click", async () => {
       [
         () => (source = makeMediaPipe("GPU")),
         () => (source = makeMediaPipe("CPU")),
+        () => (source = makeMoveNet()),
         () => (source = makeLite()),
       ],
       () => renderRate.rate(),

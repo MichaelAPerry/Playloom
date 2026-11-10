@@ -5,8 +5,10 @@ dist/
 # Pose models and MediaPipe WASM are fetched/copied by `pnpm fetch-models` (see docs/building.md)
 apps/playground/public/models/
 apps/playground/public/mediapipe/
+apps/playground/public/ort/
 apps/console/public/models/
 apps/console/public/mediapipe/
+apps/console/public/ort/
 platforms/desktop/release/
 platforms/desktop/app/
 # Scratch copies of the repository used by helper agents

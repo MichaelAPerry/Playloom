@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@mediapipe/tasks-vision": "0.10.34" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.34",
+    "onnxruntime-web": "1.31.1"
+  }
 }

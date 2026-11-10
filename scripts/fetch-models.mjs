@@ -28,8 +28,26 @@ mkdirSync(wasmOut, { recursive: true });
 cpSync(join(visionDir, "wasm"), wasmOut, { recursive: true });
 console.log(`Copied MediaPipe WASM runtime to ${wasmOut}`);
 
-// 2. Models
 const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
+
+// 1b. ONNX Runtime Web WASM (MoveNet backend), copied from node_modules and checked against a pinned hash
+for (const rt of manifest.runtimeFiles ?? []) {
+  const src = join(root, rt.from);
+  if (!existsSync(src)) {
+    console.error(`${rt.package} is not installed. Run \`pnpm install\` first.`);
+    process.exit(1);
+  }
+  const buf = readFileSync(src);
+  if (sha256(buf) !== rt.sha256) {
+    console.error(`${rt.file}: checksum mismatch (expected ${rt.sha256}, got ${sha256(buf)}). Was ${rt.package} upgraded?`);
+    process.exit(1);
+  }
+  mkdirSync(join(publicDir, rt.to), { recursive: true });
+  writeFileSync(join(publicDir, rt.to, rt.file), buf);
+  console.log(`Copied ${rt.file} (${rt.package}), checksum OK`);
+}
+
+// 2. Models
 mkdirSync(join(publicDir, "models"), { recursive: true });
 let failed = false;
 for (const model of manifest.models) {
@@ -56,7 +74,7 @@ for (const model of manifest.models) {
   }
 }
 for (const dir of mirrors) {
-  for (const sub of ["mediapipe", "models"]) cpSync(join(publicDir, sub), join(dir, sub), { recursive: true });
+  for (const sub of ["mediapipe", "models", "ort"]) cpSync(join(publicDir, sub), join(dir, sub), { recursive: true });
 }
 if (failed) {
   console.error("\nSome models could not be fetched. Skeleton tracking will be unavailable; the simulator and Lite mode still work.");
