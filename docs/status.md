@@ -100,11 +100,10 @@ The compatibility check measured all three and recommended **Standard** on the p
 ### Owner actions requested
 
 - Try the playground with two people and a webcam, run the compatibility check, and share the report —
-  this is the missing part of the Milestone 1 acceptance test. No install is needed once the web demo
-  is published: merge to `main`, set **Settings → Pages → Source** to **GitHub Actions**, and open the
-  address the "Publish web demo" workflow reports (see the README).
-- Run the **Desktop release** workflow (Actions tab) once the branch is on `main`, and try the Windows
-  installer — the Windows build has never been produced.
+  this is the missing part of the Milestone 1 acceptance test. No install is needed: the web
+  demo is live at https://michaelaperry.github.io/Playloom/.
+- Download the Windows installer from the latest **Desktop release** run (Actions tab → the run →
+  Artifacts → `playloom-windows`) and try it — it has been built but never started.
 - Enable *Private vulnerability reporting* in the repository's security settings, which
   [SECURITY.md](../SECURITY.md) refers to.
 
@@ -191,8 +190,8 @@ fair and physically comfortable is unknown.
 **Met in testing with a synthetic camera; not yet tried by a family.** In the browser build with a video
 file standing in for the camera, the whole path ran with no command line involved: the Console opened,
 offered the device check, a game was chosen, player setup recognised and numbered both people, and the
-game started. Getting the application without a command line depends on the two workflows (web demo and
-desktop release), which have been written but have not run yet.
+game started. The application is available without a command line as the published web demo and as the
+installers produced by the desktop release workflow.
 
 ### Test evidence (2026-11-10)
 
@@ -205,7 +204,9 @@ desktop release), which have been written but have not run yet.
 | Desktop app from source (Electron 45, Linux, virtual display) | Window loaded; camera granted; full body tracking started; page had no Node.js access |
 | Desktop app, hostile page behaviour | `fetch` to another site: refused. Paths outside the app folder (`../main.cjs`, encoded variants): 404 / 403. `window.open`: denied |
 | Linux package | `npm run dist` produced `Playloom-0.1.0.AppImage` (141 MB); the packaged program was run and passed the same checks |
-| Windows package | See the note under this table |
+| Windows package | Built by the *Desktop release* workflow on GitHub (installer and portable exe uploaded as artifacts). **Built but never run** — nobody has installed or started it yet |
+| Linux package on GitHub | Built by the same workflow |
+| Web demo | Published to GitHub Pages; the live site was opened with a synthetic camera: tracking started, both players seen, both games listed with their artwork, no errors and no requests to other hosts |
 | Gamepad | **Not tested** — no gamepad is available here; the code path is exercised only by reading |
 
 A real defect was found and fixed this way: the first version of the desktop shell blocked its own page
@@ -214,7 +215,7 @@ from loading, because the request filter also caught the shell's internal file r
 ### Known limitations
 
 1. Not tried by real families; the wording, sizes and flow are untested with children.
-2. Windows build, installer behaviour and gamepads are unverified.
+2. The Windows app has been built but never run; installer behaviour and gamepads are unverified.
 3. The desktop app is unsigned (Windows SmartScreen will warn) and uses the default Electron icon.
 4. No parental lock on Settings.
 5. Menus need a keyboard, remote, gamepad or mouse; they are not motion-controlled.

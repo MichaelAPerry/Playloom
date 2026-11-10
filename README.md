@@ -25,15 +25,16 @@ verified is recorded in [docs/status.md](docs/status.md).
 
 ## Try it in a browser (no install)
 
-With GitHub Pages enabled (Settings → Pages → Source: **GitHub Actions**), every push to `main` publishes
-the Console at `https://<owner>.github.io/Playloom/` and the developer playground at `…/Playloom/playground/`.
-Use Chrome or Edge. The browser asks for the camera; pictures never leave your computer. No webcam?
-Choose **Practise without a camera**.
+**https://michaelaperry.github.io/Playloom/** — use Chrome or Edge. The browser asks for the camera;
+pictures never leave your computer. No webcam? Choose **Practise without a camera**. The developer
+playground is at [`/playground/`](https://michaelaperry.github.io/Playloom/playground/). Both are
+republished on every push to `main`.
 
 ## Windows and Linux app
 
-Run the **Desktop release** workflow from the repository's Actions tab and download the installer from
-the finished run. See [platforms/desktop/README.md](platforms/desktop/README.md).
+Open the repository's **Actions** tab, choose the latest **Desktop release** run and download
+`playloom-windows` or `playloom-linux` from its artifacts (a GitHub sign-in is needed). To build a fresh
+one, press **Run workflow**. See [platforms/desktop/README.md](platforms/desktop/README.md).
 
 ## Try it from source
 
