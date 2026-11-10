@@ -9,3 +9,5 @@ apps/console/public/models/
 apps/console/public/mediapipe/
 platforms/desktop/release/
 platforms/desktop/app/
+# Scratch copies of the repository used by helper agents
+.claude/worktrees/
