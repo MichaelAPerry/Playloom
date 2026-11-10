@@ -146,13 +146,14 @@ fair and physically comfortable is unknown.
 
 - **Slice Party is cooperative** (team goal of 300 in 60 seconds) so that both modes are exercised. The
   brief did not specify. Changing it to competitive is an edit to one rule in its JSON file.
-- Game art is built-in shapes until pictures are added to each game's `assets` folder.
+- Game art was generated with ChatGPT from the prompts in `docs/art-prompts.md` and supplied by the owner.
 - Round length (60 s), scores and timings are first guesses, untested with players.
 
 ### Known limitations
 
 1. Image assets are supported for bundled games (sprites and scene backgrounds, with shapes as the
-   fallback), but **no artwork exists yet** — see [art-prompts.md](art-prompts.md). No imported audio,
+   fallback), and the bundled games now have AI-generated artwork (one picture, the lime, is still missing — see
+   [art-prompts.md](art-prompts.md)). No imported audio,
    sprite animation or `.playloom` package container yet; a game opened from a file gets shapes only.
 2. No published JSON Schema file; the TypeScript validator is the single source of truth. (A schema
    validator library that generates code at run time would be blocked by Playloom's own security

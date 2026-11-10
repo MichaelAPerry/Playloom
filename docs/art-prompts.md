@@ -3,6 +3,9 @@
 The games already look for the picture files listed below. Until a file exists, the game draws a plain
 coloured shape in its place, so you can add pictures one at a time and see each appear.
 
+**Status:** all pictures are in place except `lime.png` for Slice Party, which is still drawn as a plain
+green circle. The supplied pictures were AI-generated (ChatGPT) from these prompts.
+
 ## How to use these
 
 1. Start one ChatGPT conversation **per game** and paste the *style brief* first. Keeping every picture
