@@ -156,7 +156,7 @@ export interface CalibrationResult {
 
 export interface CalibrationOptions {
   players: number;
-  /** How long everyone must stand still. */
+  /** How long everyone must be found, roughly in place, before setup completes. */
   durationMs: number;
   timeoutMs: number;
 }
@@ -164,9 +164,14 @@ export interface CalibrationOptions {
 interface CalibrationRun {
   opts: CalibrationOptions;
   startedAt: number | null;
-  steadySince: number | null;
+  /** When the current sampling window began; null while waiting for everyone. */
+  windowStart: number | null;
+  /** Last frame on which every player was tracked. */
+  lastReadyAt: number | null;
+  /** Progress left over from a window that had to be restarted; it drains gently. */
+  carry: { value: number; at: number };
   origin: Map<number, Point>;
-  samples: Map<number, { scale: number[]; y: number[]; x: number[] }>;
+  samples: Map<number, Samples>;
   resolve: (r: CalibrationResult) => void;
   reject: (e: Error) => void;
 }
@@ -179,6 +184,13 @@ interface Body {
 }
 
 const DEFAULT_ASPECT = 16 / 9;
+const CALIBRATION_DEFAULT_MS = 1200;
+/** A player may be missing or coasting this long during setup without restarting it. */
+const CALIBRATION_GAP_MS = 400;
+/** Only a real walk (this many body sizes from where sampling began) restarts sampling. */
+const CALIBRATION_WALK = 0.8;
+type Samples = { scale: number[]; y: number[]; x: number[] };
+const HISTORY_FRAMES = 15;
 const median = (v: number[]): number => {
   const s = [...v].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)] ?? 0;
@@ -208,6 +220,9 @@ export class MotionEngine {
   private processing = new Average();
   private calibration: CalibrationRun | null = null;
   private lastCalibration: CalibrationResult | null = null;
+  private lastViews: TrackView[] = [];
+  /** Recent frames of each tracked body, for the medians used by `calibrateNow`. */
+  private history = new Map<number, Samples>();
 
   constructor(options: Partial<EngineOptions> = {}) {
     this.options = { ...DEFAULT_ENGINE_OPTIONS, ...options };
@@ -266,15 +281,15 @@ export class MotionEngine {
   }
 
   /**
-   * Player setup. Resolves once the requested number of players have stood still for
-   * `durationMs`; they are then numbered left to right and their size and standing height
+   * Player setup. Resolves once the requested number of players have been found, roughly
+   * in place, for `durationMs` (brief tracking gaps and fidgeting are tolerated); they are then numbered left to right and their size and standing height
    * recorded. Rejects if that does not happen within `timeoutMs`.
    */
   calibrate(options: Partial<CalibrationOptions> = {}): Promise<CalibrationResult> {
     this.calibration?.reject(new Error("Calibration restarted"));
-    const opts: CalibrationOptions = { players: this.options.maxPlayers, durationMs: 1500, timeoutMs: 30_000, ...options };
+    const opts: CalibrationOptions = { players: this.options.maxPlayers, durationMs: CALIBRATION_DEFAULT_MS, timeoutMs: 30_000, ...options };
     return new Promise((resolve, reject) => {
-      this.calibration = { opts, startedAt: null, steadySince: null, origin: new Map(), samples: new Map(), resolve, reject };
+      this.calibration = { opts, startedAt: null, windowStart: null, lastReadyAt: null, carry: { value: 0, at: 0 }, origin: new Map(), samples: new Map(), resolve, reject };
     });
   }
 
@@ -333,6 +348,17 @@ export class MotionEngine {
     for (const uid of [...this.bodies.keys()]) if (!liveUids.has(uid)) this.bodies.delete(uid);
     for (const id of [...this.states.keys()]) if (!liveIds.has(id)) this.states.delete(id);
 
+    this.lastViews = views;
+    for (const v of views) {
+      if (v.state !== "tracked") continue;
+      let h = this.history.get(v.uid);
+      if (!h) this.history.set(v.uid, (h = { scale: [], y: [], x: [] }));
+      h.scale.push(v.scale);
+      h.y.push(v.anchor.y);
+      h.x.push(v.anchor.x / this.aspect);
+      if (h.scale.length > HISTORY_FRAMES) for (const k of [h.scale, h.y, h.x]) k.shift();
+    }
+    for (const uid of [...this.history.keys()]) if (!liveUids.has(uid)) this.history.delete(uid);
     this.stepCalibration(views, t);
 
     for (const e of gestureEvents) this.emitter.emit("gesture", e);
@@ -366,6 +392,8 @@ export class MotionEngine {
     this.states.clear();
     this.regionSeen.clear();
     this.needsAction = false;
+    this.history.clear();
+    this.lastViews = [];
     this.rate.reset();
     this.latency.reset();
     this.processing.reset();
@@ -551,32 +579,35 @@ export class MotionEngine {
     run.startedAt ??= t;
     if (t - run.startedAt > run.opts.timeoutMs) {
       this.calibration = null;
-      run.reject(new Error(`Calibration timed out: ${run.opts.players} player(s) were not seen standing still`));
+      run.reject(new Error(`Calibration timed out: ${run.opts.players} player(s) were not found`));
       return;
     }
     const tracked = views.filter((v) => v.state === "tracked" && v.person);
+    const ready = tracked.length === run.opts.players;
+    const windowProgress = (): number => (run.windowStart === null ? 0 : Math.min(1, (t - run.windowStart) / run.opts.durationMs));
+    const carried = (): number => Math.max(0, run.carry.value - (t - run.carry.at) / (run.opts.durationMs * 2));
+    /** Start sampling afresh; whatever progress was showing drains away rather than snapping to zero. */
     const restart = (): void => {
-      run.steadySince = null;
+      run.carry = { value: Math.min(0.95, Math.max(windowProgress(), carried())), at: t };
+      run.windowStart = null;
       run.origin.clear();
       run.samples.clear();
     };
 
-    if (tracked.length !== run.opts.players) {
-      restart();
-    } else {
-      for (const v of tracked) {
-        const origin = run.origin.get(v.uid);
-        if (run.steadySince !== null && !origin) {
-          restart();
-          break;
-        }
-        if (origin && Math.hypot(v.anchor.x - origin.x, v.anchor.y - origin.y) > 0.25 * v.scale) {
-          restart();
-          break;
+    if (ready) {
+      run.lastReadyAt = t;
+      if (run.windowStart !== null) {
+        for (const v of tracked) {
+          const origin = run.origin.get(v.uid);
+          // A different body than the one sampled, or a real walk across the room.
+          if (!origin || Math.hypot(v.anchor.x - origin.x, v.anchor.y - origin.y) > CALIBRATION_WALK * v.scale) {
+            restart();
+            break;
+          }
         }
       }
-      if (run.steadySince === null) {
-        run.steadySince = t;
+      if (run.windowStart === null) {
+        run.windowStart = t;
         for (const v of tracked) run.origin.set(v.uid, { ...v.anchor });
       }
       for (const v of tracked) {
@@ -586,39 +617,68 @@ export class MotionEngine {
         s.y.push(v.anchor.y);
         s.x.push(v.anchor.x / this.aspect);
       }
+    } else if (run.windowStart !== null && (run.lastReadyAt === null || t - run.lastReadyAt > CALIBRATION_GAP_MS)) {
+      restart();
     }
 
-    const progress = run.steadySince === null ? 0 : Math.min(1, (t - run.steadySince) / run.opts.durationMs);
+    const complete = ready && windowProgress() >= 1;
+    const shown = complete ? 1 : Math.min(0.99, Math.max(windowProgress(), carried()));
+    const progress = shown;
     this.emitter.emit("calibration-progress", { progress, playersSeen: tracked.length, timestamp: t });
-    if (progress < 1) return;
+    if (!complete) return;
 
-    // Everyone stood still long enough: number left to right and record sizes.
+    // Everyone was found long enough: number left to right and record sizes.
     this.calibration = null;
+    run.resolve(this.applyCalibration(tracked, (v) => run.samples.get(v.uid), t));
+  }
+
+  /**
+   * Player setup without a timer: number the people in view left to right and record the size and
+   * standing shoulder height of each, using medians over the last few frames. `ids` (current player
+   * numbers, e.g. those who confirmed they are in) limits whose sizes are recorded; everyone in view is
+   * still numbered by side. A single person in view keeps the side of the picture they stand on
+   * (left = Player 1, right = Player 2). Throws if none of the chosen players is currently tracked.
+   */
+  calibrateNow(options: { ids?: PlayerId[] } = {}): CalibrationResult {
+    const tracked = this.lastViews.filter((v) => v.state === "tracked" && v.person);
+    const chosen = options.ids ? tracked.filter((v) => options.ids!.includes(v.id)) : tracked;
+    if (chosen.length === 0) throw new Error("calibrateNow: nobody is being tracked");
+    this.calibration?.reject(new Error("Calibration restarted"));
+    this.calibration = null;
+    return this.applyCalibration(tracked, (v) => this.history.get(v.uid), this.options.now(), chosen);
+  }
+
+  /** Number `tracked` left to right, record calibration for `chosen` (default all), and publish the new numbering. */
+  private applyCalibration(tracked: TrackView[], samplesOf: (v: TrackView) => Samples | undefined, t: number, chosen: TrackView[] = tracked): CalibrationResult {
     const fixed = this.source?.capabilities.fixedRegions ?? false;
     if (!fixed) this.handleTrackerEvents(this.tracker.assignBySide(), t);
     const ordered = [...tracked].sort((a, b) => a.anchor.x - b.anchor.x);
+    // A lone person keeps the side they stand on rather than always becoming Player 1.
+    const lone = !fixed && ordered.length === 1 && ordered[0]!.anchor.x / this.aspect >= 0.5;
+    const newId = (i: number, v: TrackView): PlayerId => (fixed ? v.id : lone ? 2 : i + 1);
+    if (lone) this.handleTrackerEvents(this.tracker.renumber(1, 2), t);
     const result: CalibrationResult = { players: {}, timestamp: t };
     ordered.forEach((v, i) => {
-      const id = fixed ? v.id : i + 1;
-      const s = run.samples.get(v.uid)!;
-      const calibration: PlayerCalibration = { scale: median(s.scale), shoulderY: median(s.y), x: median(s.x) };
+      const id = newId(i, v);
+      const previous = this.states.get(v.id);
+      if (previous && previous.id !== id) this.states.delete(v.id);
+      if (!chosen.includes(v)) return;
+      const s = samplesOf(v);
+      const calibration: PlayerCalibration = s && s.scale.length ? { scale: median(s.scale), shoulderY: median(s.y), x: median(s.x) } : { scale: v.scale, shoulderY: v.anchor.y, x: v.anchor.x / this.aspect };
       result.players[id] = calibration;
       if (!fixed) this.tracker.setReferenceScale(id, calibration.scale);
       this.body(v.uid).gestures.setBaseline(calibration.shoulderY);
-      const previous = this.states.get(v.id);
-      if (previous && previous.id !== id) this.states.delete(v.id);
     });
     // Player numbers may have changed; rebuild the public states under their new numbers.
     if (!fixed) {
-      const byUid = new Map(ordered.map((v, i) => [v.uid, i + 1]));
       const rebuilt = new Map<PlayerId, PlayerState>();
-      for (const [uid, id] of byUid) {
-        const last = this.bodies.get(uid)?.last;
-        if (last) rebuilt.set(id, { ...last, id, identity: "locked" });
-      }
+      ordered.forEach((v, i) => {
+        const last = this.bodies.get(v.uid)?.last;
+        if (last) rebuilt.set(newId(i, v), { ...last, id: newId(i, v), identity: "locked" });
+      });
       this.states = rebuilt;
     }
     this.lastCalibration = result;
-    run.resolve(result);
+    return result;
   }
 }

@@ -4,6 +4,8 @@ import {
   MediaPipePoseSource,
   MotionEngine,
   MotionLiteSource,
+  pickTrialBackend,
+  trialNeedsAnother,
   runCompatibilityCheck,
   type CompatibilityReport,
   type MotionSettings,
@@ -29,6 +31,44 @@ export interface StoredCheck {
 }
 
 const CHECK_KEY = "playloom.compatibility";
+const TRIAL_KEY = "playloom.trial";
+const TRIAL_WARMUP_MS = 1500;
+const TRIAL_MEASURE_MS = 4000;
+
+/** Result of the quick automatic speed trial, kept so later launches go straight to the winner. */
+export interface StoredTrial {
+  backend: string;
+  rates: { gpu?: number; cpu?: number };
+  at: string;
+}
+
+export function loadTrial(): StoredTrial | null {
+  try {
+    const data = JSON.parse(localStorage.getItem(TRIAL_KEY) ?? "null") as StoredTrial | null;
+    return data && typeof data.backend === "string" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveTrial(trial: StoredTrial): void {
+  try {
+    localStorage.setItem(TRIAL_KEY, JSON.stringify(trial));
+  } catch {
+    // Storage blocked: the choice still holds for this session.
+  }
+}
+
+/** Forget the quick trial so the next start measures again. */
+export function clearTrial(): void {
+  try {
+    localStorage.removeItem(TRIAL_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export function loadCheck(): StoredCheck | null {
   try {
@@ -42,7 +82,7 @@ export function loadCheck(): StoredCheck | null {
 /** Owns the motion engine and whichever source is feeding it. */
 export class Tracking {
   readonly engine: MotionEngine;
-  state: "idle" | "starting" | "running" | "error" = "idle";
+  state: "idle" | "starting" | "tuning" | "running" | "error" = "idle";
   error: { message: string; camera: boolean } | null = null;
   /** The backend actually in use. */
   active: string | null = null;
@@ -91,31 +131,103 @@ export class Tracking {
     if (mode === "practice") order = ["simulator"];
     else if (mode === "auto") {
       const checked = loadCheck()?.recommendation.backend;
-      order = [...new Set([checked ?? "mediapipe-pose-gpu", "mediapipe-pose-cpu", "motion-lite"])];
+      if (!checked && !loadTrial()) {
+        const chosen = await this.trial(generation);
+        if (chosen === null) return; // superseded, or a camera problem was recorded
+        order = [...new Set([chosen, "mediapipe-pose-cpu", "motion-lite"])];
+      } else {
+        const preferred = checked ?? loadTrial()?.backend ?? "mediapipe-pose-gpu";
+        order = [...new Set([preferred, "mediapipe-pose-cpu", "motion-lite"])];
+      }
     } else order = [mode];
 
     for (const backend of order) {
-      const source = this.make(backend);
-      try {
-        await this.engine.attach(source);
-        await this.engine.start();
-        if (generation !== this.generation) return;
-        this.source = source;
-        this.active = source.id;
-        this.state = "running";
-        if (source instanceof SimulatorSource) this.sim = attachSimulatorControls(source, this.surface);
-        return;
-      } catch (err) {
-        if (generation !== this.generation) return;
-        const camera = err instanceof CameraError;
-        this.error = { message: (err as Error)?.message ?? String(err), camera };
-        // A camera problem will not be solved by trying a different kind of tracking.
-        if (camera) break;
-      }
+      if (await this.tryBackend(backend, generation)) return;
+      if (generation !== this.generation) return;
+      // A camera problem will not be solved by trying a different kind of tracking.
+      if (this.cameraFailed()) break;
     }
+    this.fail();
+  }
+
+  private cameraFailed(): boolean {
+    return !!this.error?.camera;
+  }
+
+  private fail(): void {
     this.source = null;
     this.active = null;
     this.state = "error";
+  }
+
+  /** Start one backend. Returns true when it is running; false (with `error` set) when it failed or was superseded. */
+  private async tryBackend(backend: string, generation: number): Promise<boolean> {
+    const source = this.make(backend);
+    try {
+      await this.engine.attach(source);
+      await this.engine.start();
+      if (generation !== this.generation) return false;
+      this.source = source;
+      this.active = source.id;
+      this.state = "running";
+      this.error = null;
+      if (source instanceof SimulatorSource) this.sim = attachSimulatorControls(source, this.surface);
+      return true;
+    } catch (err) {
+      if (generation !== this.generation) return false;
+      this.error = { message: (err as Error)?.message ?? String(err), camera: err instanceof CameraError };
+      return false;
+    }
+  }
+
+  /** Time one backend: warm up, then average the tracking rate. Undefined when it could not start. */
+  private async timeBackend(backend: string, generation: number): Promise<number | undefined> {
+    const source = this.make(backend);
+    try {
+      await this.engine.attach(source);
+      await this.engine.start();
+    } catch (err) {
+      if (generation !== this.generation) return undefined;
+      this.error = { message: (err as Error)?.message ?? String(err), camera: err instanceof CameraError };
+      return undefined;
+    }
+    this.source = source;
+    await sleep(TRIAL_WARMUP_MS);
+    const samples: number[] = [];
+    for (let waited = 0; waited < TRIAL_MEASURE_MS && generation === this.generation; waited += 250) {
+      await sleep(250);
+      samples.push(this.engine.api.status.trackingHz);
+    }
+    if (generation !== this.generation || samples.length === 0) return undefined;
+    return samples.reduce((a, b) => a + b, 0) / samples.length;
+  }
+
+  /**
+   * Quick automatic trial: graphics card first, processor only if that is slow. Returns the backend to use,
+   * or null if the trial was superseded or hit a camera problem (in which case the state is already set).
+   */
+  private async trial(generation: number): Promise<string | null> {
+    this.state = "tuning";
+    const rates: { gpu?: number; cpu?: number } = {};
+    rates.gpu = await this.timeBackend("mediapipe-pose-gpu", generation);
+    if (generation !== this.generation) return null;
+    if (this.cameraFailed()) {
+      this.fail();
+      return null;
+    }
+    if (trialNeedsAnother(rates.gpu)) {
+      rates.cpu = await this.timeBackend("mediapipe-pose-cpu", generation);
+      if (generation !== this.generation) return null;
+      if (this.cameraFailed()) {
+        this.fail();
+        return null;
+      }
+    }
+    const decision = pickTrialBackend(rates);
+    saveTrial({ backend: decision.backend, rates, at: new Date().toISOString() });
+    this.error = null;
+    this.state = "starting";
+    return decision.backend;
   }
 
   apply(patch: Partial<MotionSettings>): void {

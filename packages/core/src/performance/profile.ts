@@ -100,3 +100,36 @@ export function recommendProfile(report: CompatibilityReport): ProfileRecommenda
   reasons.push("No tracking backend ran successfully.");
   return { profile: "unsupported", supportedPlayers: 0, capabilities: none, reasons };
 }
+
+/** Quick automatic trial (used when no full device check exists): the rate a backend must reach to be kept without timing the next. */
+export const TRIAL_GOOD_HZ = 15;
+/** Below this the best skeleton backend is too slow and motion regions are used instead. */
+export const TRIAL_MIN_HZ = 8;
+
+export interface TrialDecision {
+  backend: "mediapipe-pose-gpu" | "mediapipe-pose-cpu" | "motion-lite";
+  reason: string;
+}
+
+/** Whether the next backend is worth timing. `undefined` means the backend could not start. */
+export function trialNeedsAnother(hz: number | undefined): boolean {
+  return hz === undefined || hz < TRIAL_GOOD_HZ;
+}
+
+/**
+ * Pick a backend from measured rates (updates per second). A missing rate means the backend failed to
+ * start or was not timed. The faster skeleton backend wins (graphics card on a tie); if even that is
+ * below `TRIAL_MIN_HZ`, or nothing ran, fall back to motion regions.
+ */
+export function pickTrialBackend(rates: { gpu?: number; cpu?: number }): TrialDecision {
+  const { gpu, cpu } = rates;
+  const best =
+    cpu !== undefined && (gpu === undefined || cpu > gpu)
+      ? ({ backend: "mediapipe-pose-cpu", hz: cpu } as const)
+      : gpu !== undefined
+        ? ({ backend: "mediapipe-pose-gpu", hz: gpu } as const)
+        : null;
+  if (!best) return { backend: "motion-lite", reason: "Full body tracking could not start." };
+  if (best.hz < TRIAL_MIN_HZ) return { backend: "motion-lite", reason: `Full body tracking reached only ${best.hz.toFixed(1)} Hz.` };
+  return { backend: best.backend, reason: `${best.backend} reached ${best.hz.toFixed(1)} Hz.` };
+}

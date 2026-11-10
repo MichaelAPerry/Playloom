@@ -7,6 +7,8 @@ import {
   MEDIAPIPE_LANDMARKS,
   OneEuroFilter,
   personFromLandmarks,
+  pickTrialBackend,
+  trialNeedsAnother,
   RateMeter,
   recommendProfile,
   saveSettings,
@@ -136,6 +138,29 @@ describe("profile recommendation", () => {
   it("reports unsupported without a camera or without any working backend", () => {
     expect(recommendProfile({ ...base, camera: { available: false, count: 0 } }).profile).toBe("unsupported");
     expect(recommendProfile({ ...base, backends: [] }).profile).toBe("unsupported");
+  });
+});
+
+describe("quick tracking trial decision", () => {
+  it("only times the processor backend when the graphics path is slow or failed", () => {
+    expect(trialNeedsAnother(30)).toBe(false);
+    expect(trialNeedsAnother(15)).toBe(false);
+    expect(trialNeedsAnother(14.9)).toBe(true);
+    expect(trialNeedsAnother(undefined)).toBe(true);
+  });
+
+  it("keeps whichever skeleton backend is faster, preferring the graphics card on a tie", () => {
+    expect(pickTrialBackend({ gpu: 24 }).backend).toBe("mediapipe-pose-gpu");
+    expect(pickTrialBackend({ gpu: 3, cpu: 16 }).backend).toBe("mediapipe-pose-cpu");
+    expect(pickTrialBackend({ gpu: 12, cpu: 9 }).backend).toBe("mediapipe-pose-gpu");
+    expect(pickTrialBackend({ gpu: 10, cpu: 10 }).backend).toBe("mediapipe-pose-gpu");
+    expect(pickTrialBackend({ cpu: 12 }).backend).toBe("mediapipe-pose-cpu");
+  });
+
+  it("falls back to motion regions when the best is below 8 Hz or nothing started", () => {
+    expect(pickTrialBackend({ gpu: 2, cpu: 7.9 }).backend).toBe("motion-lite");
+    expect(pickTrialBackend({ gpu: 8 }).backend).toBe("mediapipe-pose-gpu");
+    expect(pickTrialBackend({}).backend).toBe("motion-lite");
   });
 });
 

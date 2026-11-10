@@ -222,6 +222,15 @@ from loading, because the request filter also caught the shell's internal file r
 7. Installed games are stored per browser profile; clearing site data removes them.
 8. The Console has no automated browser tests in the repository; the checks above were scripted by hand.
 
+### Console update: setup and speed (2026-11-10, after the owner's first live try)
+
+Changed after the owner reported a confusing setup timer and slow tracking:
+
+- **Player setup is now join-by-gesture, with no timer.** `PlayerJoin` (`packages/core/src/setup/join.ts`) detects a person per half and joins them when a raised hand is seen on 3 consecutive frames (only to reject one-frame glitches); both players holding both hands up (after lowering them once) starts. `engine.calibrateNow()` numbers by side and records size/height from the last 15 frames' medians without waiting. The timed `calibrate()` remains (playground) and is more forgiving: 1.2 s default, gaps up to 400 ms and fidgeting tolerated, a restart only after a walk of 0.8 body sizes, progress drains rather than snapping to zero.
+- **Automatic quick speed trial** when there is no device check (see console.md); decision logic in `packages/core/src/performance/profile.ts`.
+
+Tested: `pnpm check` (typecheck, tests, builds) with the simulator tests for fidgeting, a 200 ms dropout, walking, one-player timeout, raise-to-join per side, glitch rejection, both-hands start, one-player continue and `calibrateNow`; unit tests for the trial decision. The built Console was run in headless Chromium with Chromium's fake camera (no people in view): the trial ran, timed the graphics path (0 updates a second there) then the processor (about 19), stored the processor choice, and Settings showed "17 updates a second" and the *Re-test* option; no errors. **Not tested:** the setup screen's on-screen layout and join flow with real people (the fake camera shows nobody and practice mode skips setup), real cameras, real GPUs, gamepad.
+
 ## Next
 
 Carried over (pose estimation has already been moved into a worker):

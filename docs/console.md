@@ -9,7 +9,7 @@ on an Android TV box.
 | Screen | What it does |
 |---|---|
 | **Home** | Game tiles, plus *Player setup*, *Add a game* and *Settings*. Chips at the top light up in orange and blue when Player 1 and Player 2 are in view. |
-| **Player setup** | Shows the camera like a mirror. Two players stand side by side — Player 1 on the left — and hold still for two seconds. Runs automatically before the first game of a session. |
+| **Player setup** | Shows the camera like a mirror with two big slots: Player 1 (left half, orange) and Player 2 (right half, blue). There is no timer. Each person stands in their half and raises a hand to join ("Player 1 is in!"); when both are in, press Start — or both raise both hands. *Player 1 is ready* / *Player 2 is ready* buttons confirm whoever is detected in a half from the keyboard or remote, and *Start with one player* is offered once one person has joined (games wait for the second player). Runs automatically before the first game of a session. |
 | **Playing** | The game fills the screen. It pauses by itself if a player walks away or if it loses track of who is who, and says what to do. |
 | **Settings** (for grown-ups) | Tracking mode, camera, mirror, gesture sensitivity, the device check, sound, full screen, and installed games. |
 
@@ -26,8 +26,7 @@ Everything works without a mouse.
 
 ### Tracking modes
 
-*Automatic* uses the result of **Check this device**; before the check has been run it tries full body
-tracking on the graphics card, then on the processor, then Lite. A camera problem is reported as such
+*Automatic* uses the result of **Check this device**. Before any check has been run it does a quick trial the first time: full body tracking on the graphics card is timed for about 4 seconds (after 1.5 s warm-up); if below 15 updates a second the processor is timed the same way; the faster is kept, and Lite is used if the best is below 8. The home screen says "Finding the best tracking…" and games cannot be started until it finishes. The result is stored on the device and used from then on; changing the camera or *Re-test tracking speed* in Settings clears it. Settings shows the live tracking rate next to *Now using*. A camera problem is reported as such
 rather than hidden by a fallback.
 
 *Practice* needs no camera: two pretend players are driven from the keyboard and mouse, using the
