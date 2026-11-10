@@ -1,0 +1,8 @@
+{
+  "name": "@playloom/core",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@mediapipe/tasks-vision": "^1.2.2" }
+}

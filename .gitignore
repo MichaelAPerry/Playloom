@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# Pose models and MediaPipe WASM are fetched/copied by `pnpm fetch-models` (see docs/building.md)
+apps/playground/public/models/
+apps/playground/public/mediapipe/

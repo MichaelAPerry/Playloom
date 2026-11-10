@@ -1,0 +1,16 @@
+{
+  "name": "@playloom/playground",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@playloom/core": "workspace:*",
+    "@playloom/simulator": "workspace:*"
+  }
+}
