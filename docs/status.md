@@ -195,7 +195,7 @@ desktop release), which have been written but have not run yet.
 
 | Check | Result |
 |---|---|
-| `pnpm typecheck`, `pnpm test`, `pnpm build` | Passed; 106 of 106 tests (10 files), including 10 package tests |
+| `pnpm typecheck`, `pnpm test`, `pnpm build` | Passed; 107 of 107 tests (10 files), including 10 package tests |
 | Console, no camera, keyboard only (headless Chromium) | "No camera was found" shown; *Practise without a camera* started two simulated players; arrow keys and Enter launched a game; Esc paused; menu worked; no console errors; no requests to other hosts |
 | Installing a game | A `.playloom` file showed the permission prompt, installed, and was still there after reloading; a non-package file was refused with a message |
 | Console with synthetic two-person camera | Welcome prompt → game chosen → player setup calibrated both players (Player 1 left at x≈0.25, Player 2 right at x≈0.74) → game playing |

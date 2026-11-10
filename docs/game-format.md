@@ -72,7 +72,7 @@ Every object has `id`, `type`, `x`, `y`, and optionally `layer`, `visible` and `
 |---|---|---|
 | `scene-start` | When the scene begins | |
 | `every` | Every `seconds`, optionally varied by `jitter` | |
-| `hand-touches` | When a hand of `player` (a number or `any`) moves onto a visible sprite; optional `hand`, and `minSpeed` for slicing | `$player`, `$object` |
+| `hand-touches` | When a hand of `player` (a number or `any`) moves onto a visible sprite — something appearing under a hand that is already there does not count; optional `hand`, and `minSpeed` for slicing | `$player`, `$object` |
 | `gesture` | When `player` starts `gesture` (`jump`, `duck`, `handsUp`, `leftHandRaised`, `rightHandRaised`, `leanLeft`, `leanRight`, `swipe`) | `$player` |
 | `timer-ends` | When timer `timer` reaches zero | |
 | `collision` | When sprites `a` and `b` start to overlap | `$object`, `$other` |

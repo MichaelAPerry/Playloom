@@ -57,7 +57,7 @@ describe("Mole Mayhem (defined entirely by rules)", () => {
     expect(runtime.score(1)).toBe(0);
   });
 
-  it("requires a fresh touch for each mole (resting a hand on a hole does not farm points)", async () => {
+  it("does not score when a mole pops up under a resting hand", async () => {
     const { runtime, step, reach } = await play(load("mole-mayhem"));
     step(1500);
     const mole = runtime.objects.find((o) => o.tags.has("mole") && o.visible)!;
@@ -65,8 +65,20 @@ describe("Mole Mayhem (defined entirely by rules)", () => {
     step(300);
     expect(runtime.score(1)).toBe(10);
     step(20_000); // the hand stays put while the mole reappears several times
-    expect(runtime.score(1)).toBeGreaterThan(10); // re-emerging under the hand counts as a new touch…
-    expect(runtime.score(1)).toBeLessThanOrEqual(10 + 10 * 12 + 30 * 4); // …but only once per appearance
+    expect(runtime.score(1)).toBe(10);
+    // Moving away and back counts again.
+    reach(1, mole.x + 300, mole.y);
+    step(300);
+    for (let i = 0; i < 100 && !mole.visible; i++) step(100);
+    reach(1, mole.x, mole.y);
+    step(300);
+    expect(runtime.score(1)).toBe(20);
+  });
+
+  it("does not let players score by standing still with their arms down", async () => {
+    const { runtime, step } = await play(load("mole-mayhem"));
+    step(30_000);
+    expect(runtime.totalScore()).toBe(0);
   });
 
   it("plays a full round to a winner", async () => {

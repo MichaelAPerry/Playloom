@@ -420,9 +420,12 @@ export class GameRuntime {
       }
       const touching = new Set<string>();
       for (const o of [...this.objects]) {
-        if (o.type !== "sprite" || !o.visible || !contains(o, hand.x, hand.y, radius)) continue;
+        if (o.type !== "sprite" || !contains(o, hand.x, hand.y, radius)) continue;
+        // A touch is a hand moving onto something. Hidden objects are tracked too, so that
+        // something appearing underneath a resting hand does not count: the player has to move
+        // away and come back. Otherwise standing still would score.
         touching.add(o.id);
-        if (hand.touching.has(o.id)) continue;
+        if (hand.touching.has(o.id) || !o.visible) continue;
         const h = hand;
         each("hand-touches", (rule) => {
           const w = rule.when as Extract<Trigger, { type: "hand-touches" }>;
