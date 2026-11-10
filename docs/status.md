@@ -242,6 +242,12 @@ measured: in this container it tracked two people at 8–10 Hz against MediaPipe
 Console does not ship MoveNet. It may still win with three or more people or with GPU acceleration,
 neither of which has been measured.
 
+### Console interface pass (2026-11-10)
+
+Rebuilt the Console's look and flow after the owner's first try: no timers or auto-advance (dialogs and inline text replace toasts; the device check and speed trial show step progress), a consistent header with Back and a Pause button in games, focus rings, segmented settings, an arrow-key fallback so every control is reachable, hand cursors with halo, number and L/R tag, outlined HUD text, a camera backdrop option, SVG icons, and a layout in em units that scales with the window.
+
+Checked (headless Chromium, built app, fake camera video, keyboard and mouse): home, alert, settings, setup, both games, pause, results, install and "not a game" dialogs at 1024x600, 1280x720 and 1920x1080 (home also at 800x500, 1366x768, 1000x900, 3840x2160): no horizontal scroll and nothing off the right edge; a graph walk of arrow-key moves reached every control on home and Settings; `pnpm check` passes (122 tests). Not verified: a real webcam, real families or children reading the wording, a gamepad, a real TV, and the Windows app.
+
 ## Next
 
 Carried over (pose estimation has already been moved into a worker):

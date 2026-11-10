@@ -89,6 +89,8 @@ export class Tracking {
   private source: PoseSource | null = null;
   private sim: SimulatorControls | null = null;
   private generation = 0;
+  /** Which step of the quick automatic trial is running, for the progress display. */
+  trialProgress: { step: number; of: number; label: string; since: number } | null = null;
 
   constructor(
     private settings: MotionSettings,
@@ -154,7 +156,16 @@ export class Tracking {
     return !!this.error?.camera;
   }
 
+  /** How far the quick trial has got, from 0 to 1, from the step and the time spent on it. */
+  trialFraction(): number {
+    const t = this.trialProgress;
+    if (!t) return 0;
+    const within = Math.min(1, (Date.now() - t.since) / (TRIAL_WARMUP_MS + TRIAL_MEASURE_MS));
+    return Math.min(0.98, (t.step - 1 + within) / t.of);
+  }
+
   private fail(): void {
+    this.trialProgress = null;
     this.source = null;
     this.active = null;
     this.state = "error";
@@ -181,7 +192,8 @@ export class Tracking {
   }
 
   /** Time one backend: warm up, then average the tracking rate. Undefined when it could not start. */
-  private async timeBackend(backend: string, generation: number): Promise<number | undefined> {
+  private async timeBackend(backend: string, generation: number, step: number): Promise<number | undefined> {
+    this.trialProgress = { step, of: 2, label: MODE_LABELS[backend as TrackingMode] ?? backend, since: Date.now() };
     const source = this.make(backend);
     try {
       await this.engine.attach(source);
@@ -209,14 +221,14 @@ export class Tracking {
   private async trial(generation: number): Promise<string | null> {
     this.state = "tuning";
     const rates: { gpu?: number; cpu?: number } = {};
-    rates.gpu = await this.timeBackend("mediapipe-pose-gpu", generation);
+    rates.gpu = await this.timeBackend("mediapipe-pose-gpu", generation, 1);
     if (generation !== this.generation) return null;
     if (this.cameraFailed()) {
       this.fail();
       return null;
     }
     if (trialNeedsAnother(rates.gpu)) {
-      rates.cpu = await this.timeBackend("mediapipe-pose-cpu", generation);
+      rates.cpu = await this.timeBackend("mediapipe-pose-cpu", generation, 2);
       if (generation !== this.generation) return null;
       if (this.cameraFailed()) {
         this.fail();
@@ -225,6 +237,7 @@ export class Tracking {
     }
     const decision = pickTrialBackend(rates);
     saveTrial({ backend: decision.backend, rates, at: new Date().toISOString() });
+    this.trialProgress = null;
     this.error = null;
     this.state = "starting";
     return decision.backend;
@@ -238,15 +251,20 @@ export class Tracking {
   cameras = listCameras;
 
   /** Measure every backend on this device and remember the result. Tracking restarts afterwards. */
-  async check(progress: (message: string) => void): Promise<StoredCheck> {
+  async check(progress: (step: { index: number; of: number; label: string }) => void): Promise<StoredCheck> {
     this.generation++;
     this.sim?.detach();
     this.sim = null;
+    const ids = ["mediapipe-pose-gpu", "mediapipe-pose-cpu", "motion-lite"];
     const result = await runCompatibilityCheck(
       this.engine,
-      ["mediapipe-pose-gpu", "mediapipe-pose-cpu", "motion-lite"].map((b) => () => (this.source = this.make(b))),
+      ids.map((b) => () => (this.source = this.make(b))),
       () => this.renderFps(),
-      progress,
+      (message) => {
+        const id = /^Measuring (.+)…$/.exec(message)?.[1] ?? "";
+        const index = ids.indexOf(id);
+        progress({ index: index < 0 ? 1 : index + 1, of: ids.length, label: MODE_LABELS[id as TrackingMode] ?? id });
+      },
     );
     try {
       localStorage.setItem(CHECK_KEY, JSON.stringify(result));

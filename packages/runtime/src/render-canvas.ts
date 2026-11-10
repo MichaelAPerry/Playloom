@@ -3,10 +3,18 @@ import { EFFECT_SECONDS, type GameRuntime, type LiveObject } from "./runtime";
 /** Colours for player cursors; the same on every screen so children learn "I am orange". */
 export const PLAYER_COLORS: Record<number, string> = { 1: "#ff9f1c", 2: "#3ec5ff", 3: "#7bd389", 4: "#ff6b9d" };
 
+const BACKDROP_ALPHA = { off: 0, faint: 0.2, strong: 0.5 } as const;
+const FONT = 'system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif';
+
 export interface CanvasRenderOptions {
   /** A camera picture to show faintly behind the game, already mirrored or not as `mirror` says. */
   video?: HTMLVideoElement | null;
   mirror?: boolean;
+  /**
+   * How strongly the camera picture shows behind the game. "off" skips drawing it altogether.
+   * When omitted the picture is drawn at its original strength (used by the developer playground).
+   */
+  backdrop?: "off" | "faint" | "strong";
   /** Loaded pictures by asset id. Anything missing falls back to the sprite's shape and colour. */
   images?: ReadonlyMap<string, CanvasImageSource>;
 }
@@ -33,11 +41,12 @@ export function renderToCanvas(ctx: CanvasRenderingContext2D, runtime: GameRunti
   const backdrop = runtime.scene.backgroundImage && options.images?.get(runtime.scene.backgroundImage);
   if (backdrop) ctx.drawImage(backdrop, 0, 0, W, H);
   const video = options.video;
-  if (video && video.readyState >= 2 && video.videoWidth > 0) {
+  const backdropAlpha = options.backdrop ? BACKDROP_ALPHA[options.backdrop] : 0.28;
+  if (video && backdropAlpha > 0 && video.readyState >= 2 && video.videoWidth > 0) {
     // Players see themselves faintly, which makes aiming far easier. The picture is stretched to
     // the scene so that it lines up exactly with the hand cursors, which use the same mapping.
     ctx.save();
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = backdropAlpha;
     if (options.mirror ?? true) {
       ctx.translate(W, 0);
       ctx.scale(-1, 1);
@@ -71,23 +80,60 @@ export function renderToCanvas(ctx: CanvasRenderingContext2D, runtime: GameRunti
   }
   ctx.globalAlpha = 1;
 
-  for (const c of runtime.cursors()) {
-    const r = H * 0.035;
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = PLAYER_COLORS[c.player] ?? "#fff";
-    ctx.fill();
-    ctx.lineWidth = r * 0.16;
-    ctx.strokeStyle = "#fff";
-    ctx.stroke();
-    ctx.fillStyle = "#10131c";
-    ctx.font = `bold ${r}px system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(c.player), c.x, c.y + r * 0.06);
-  }
+  for (const c of runtime.cursors()) drawCursor(ctx, c, H);
   ctx.restore();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+/**
+ * A hand cursor that can be found at a glance on any picture: a soft halo in the player's colour, a
+ * dark outer ring and a white ring for contrast on both light and dark art, the player's number, and a
+ * small L or R tag for which hand it is.
+ */
+function drawCursor(ctx: CanvasRenderingContext2D, c: { player: number; hand: string; x: number; y: number }, H: number): void {
+  const color = PLAYER_COLORS[c.player] ?? "#ffffff";
+  const r = H * 0.052;
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, r * 2.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, r * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+  ctx.lineWidth = r * 0.52;
+  ctx.strokeStyle = "rgba(8, 10, 28, 0.9)";
+  ctx.stroke();
+  ctx.lineWidth = r * 0.26;
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `800 ${r * 1.15}px ${FONT}`;
+  ctx.fillStyle = "#10131c";
+  ctx.fillText(String(c.player), c.x, c.y + r * 0.06);
+  // Which hand: a small white tag at the lower right of the cursor.
+  const tr = r * 0.42;
+  const tx = c.x + r * 0.95;
+  const ty = c.y + r * 0.95;
+  ctx.beginPath();
+  ctx.arc(tx, ty, tr, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.lineWidth = tr * 0.3;
+  ctx.strokeStyle = "rgba(8, 10, 28, 0.9)";
+  ctx.stroke();
+  ctx.fillStyle = "#10131c";
+  ctx.font = `800 ${tr * 1.15}px ${FONT}`;
+  ctx.fillText(c.hand === "left" ? "L" : "R", tx, ty + tr * 0.05);
+  ctx.restore();
 }
 
 function drawSprite(ctx: CanvasRenderingContext2D, o: LiveObject, image?: CanvasImageSource): void {
@@ -140,14 +186,22 @@ function drawSprite(ctx: CanvasRenderingContext2D, o: LiveObject, image?: Canvas
   ctx.restore();
 }
 
+/** Text sits on busy art, so it gets a thick dark outline and a soft shadow as well as its own colour. */
 function drawText(ctx: CanvasRenderingContext2D, o: LiveObject, text: string): void {
-  ctx.font = `bold ${o.size}px system-ui, sans-serif`;
+  ctx.save();
+  ctx.font = `800 ${o.size}px ${FONT}`;
   ctx.textAlign = o.align;
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
-  ctx.lineWidth = o.size * 0.16;
-  ctx.strokeStyle = "rgba(0,0,0,0.45)";
+  ctx.miterLimit = 2;
+  ctx.lineWidth = o.size * 0.26;
+  ctx.strokeStyle = "rgba(8, 10, 28, 0.92)";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+  ctx.shadowBlur = o.size * 0.18;
+  ctx.shadowOffsetY = o.size * 0.06;
   ctx.strokeText(text, o.x, o.y);
+  ctx.shadowColor = "transparent";
   ctx.fillStyle = o.color;
   ctx.fillText(text, o.x, o.y);
+  ctx.restore();
 }
