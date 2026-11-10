@@ -6,6 +6,8 @@ Playloom uses the following third-party components. Each remains under its own l
 |---|---|---|
 | [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) 0.10.34 | Pose estimation runtime (JavaScript and WebAssembly) | Apache-2.0 |
 | MediaPipe Pose Landmarker models (`pose_landmarker_lite`, `pose_landmarker_full`) | Pose estimation models, downloaded by `pnpm fetch-models` | Apache-2.0 |
+| [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) 1.31.1 | Runs the MoveNet model (JavaScript and WebAssembly) | MIT |
+| MoveNet MultiPose Lightning, ONNX conversion by [Xenova](https://huggingface.co/Xenova/movenet-multipose-lightning) of Google's model | Pose estimation model, downloaded by `pnpm fetch-models` | Apache-2.0 |
 | [fflate](https://github.com/101arrowz/fflate) 0.8.3 | Reading and writing game packages | MIT |
 | [Electron](https://www.electronjs.org) 45 (includes Chromium and Node.js) | Desktop application shell | MIT; Chromium and its components under BSD-style and other licences shipped with the binary |
 

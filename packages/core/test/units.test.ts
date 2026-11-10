@@ -123,6 +123,13 @@ describe("profile recommendation", () => {
     expect(r.capabilities.skeleton).toBe(true);
   });
 
+  it("picks whichever skeleton backend is fastest, MoveNet included", () => {
+    const move = { ...pose(20), backend: "movenet-multipose" };
+    const mediapipe = { ...pose(14), backend: "mediapipe-pose-cpu" };
+    expect(recommendProfile({ ...base, backends: [mediapipe, move, lite] }).backend).toBe("movenet-multipose");
+    expect(recommendProfile({ ...base, backends: [{ ...move, trackingHz: 9 }, mediapipe, lite] }).backend).toBe("mediapipe-pose-cpu");
+  });
+
   it("falls back to Lite when pose tracking is too slow or fails, and says why", () => {
     const slow = recommendProfile({ ...base, backends: [pose(5), lite] });
     expect(slow.profile).toBe("lite");

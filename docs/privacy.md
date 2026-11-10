@@ -30,6 +30,9 @@ and keeps the Content-Security-Policy as a second line of defence. The owner's d
 reporting is always blocked; the details are recorded as D7 in
 [architecture/decisions.md](architecture/decisions.md).
 
+The MoveNet backend runs on ONNX Runtime Web, whose code contains no telemetry; its files are served
+locally and their checksums are pinned (D9). In a browser run, every request stayed on the page's own origin.
+
 **Do not upgrade `@mediapipe/tasks-vision` without re-reading its privacy notice and checking the
 browser console and network panel for outbound requests.**
 

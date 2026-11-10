@@ -14,6 +14,40 @@
       "license": "Apache-2.0",
       "bytes": 9398198,
       "optional": true
+    },
+    {
+      "file": "movenet_multipose_lightning.onnx",
+      "url": "https://huggingface.co/Xenova/movenet-multipose-lightning/resolve/8506174df310cf154b97352afa98d1ea4b1e4b47/onnx/model.onnx",
+      "sha256": "60f724a56f0119d22d2afcf530019db307c77d4ea598eb5bd53bb65afe93930d",
+      "license": "Apache-2.0",
+      "bytes": 19049169,
+      "note": "Google MoveNet MultiPose Lightning, ONNX conversion by Xenova (float32), pinned to a repository revision"
+    }
+  ],
+  "runtimeFiles": [
+    {
+      "file": "ort.wasm.min.mjs",
+      "from": "packages/core/node_modules/onnxruntime-web/dist/ort.wasm.min.mjs",
+      "to": "ort",
+      "sha256": "c21d9c326d453a4a61398270c804d5979e118540597cb0c07f7b3d64e6098234",
+      "license": "MIT",
+      "package": "onnxruntime-web 1.31.1"
+    },
+    {
+      "file": "ort-wasm-simd-threaded.mjs",
+      "from": "packages/core/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs",
+      "to": "ort",
+      "sha256": "30ed0b5cd1182ede931fea448afb567d4dc705ec957af09f108a2be5f770dac3",
+      "license": "MIT",
+      "package": "onnxruntime-web 1.31.1"
+    },
+    {
+      "file": "ort-wasm-simd-threaded.wasm",
+      "from": "packages/core/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
+      "to": "ort",
+      "sha256": "4b884c203b0fa48d057be3332c65513ff85aa3c5bddd6946acc0fab7ecda001d",
+      "license": "MIT",
+      "package": "onnxruntime-web 1.31.1"
     }
   ]
 }
