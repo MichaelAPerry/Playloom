@@ -236,6 +236,12 @@ Changed after the owner reported a confusing setup timer and slow tracking:
 
 Tested: `pnpm check` (typecheck, tests, builds) with the simulator tests for fidgeting, a 200 ms dropout, walking, one-player timeout, raise-to-join per side, glitch rejection, both-hands start, one-player continue and `calibrateNow`; unit tests for the trial decision. The built Console was run in headless Chromium with Chromium's fake camera (no people in view): the trial ran, timed the graphics path (0 updates a second there) then the processor (about 19), stored the processor choice, and Settings showed "17 updates a second" and the *Re-test* option; no errors. **Not tested:** the setup screen's on-screen layout and join flow with real people (the fake camera shows nobody and practice mode skips setup), real cameras, real GPUs, gamepad.
 
+**MoveNet outcome (owner decision D3 called for it as a benchmarked alternative).** It is built and
+measured: in this container it tracked two people at 8–10 Hz against MediaPipe's 13–15 Hz, and it adds
+34 MB. It is therefore available in the developer playground and its compatibility check only; the
+Console does not ship MoveNet. It may still win with three or more people or with GPU acceleration,
+neither of which has been measured.
+
 ## Next
 
 Carried over (pose estimation has already been moved into a worker):

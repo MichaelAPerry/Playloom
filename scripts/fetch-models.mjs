@@ -73,8 +73,12 @@ for (const model of manifest.models) {
     console.log(`FAILED: ${err.message}`);
   }
 }
+// The Console ships only what it uses. The MoveNet backend (34 MB of runtime and model) measured
+// slower than MediaPipe for two players, so it stays in the developer playground for comparison
+// and is not included in the Console or the desktop app.
 for (const dir of mirrors) {
-  for (const sub of ["mediapipe", "models", "ort"]) cpSync(join(publicDir, sub), join(dir, sub), { recursive: true });
+  cpSync(join(publicDir, "mediapipe"), join(dir, "mediapipe"), { recursive: true });
+  cpSync(join(publicDir, "models"), join(dir, "models"), { recursive: true, filter: (src) => !src.endsWith(".onnx") });
 }
 if (failed) {
   console.error("\nSome models could not be fetched. Skeleton tracking will be unavailable; the simulator and Lite mode still work.");
