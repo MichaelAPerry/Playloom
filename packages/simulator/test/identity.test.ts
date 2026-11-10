@@ -211,6 +211,70 @@ describe("calibration", () => {
     expect(finished).toBe(true);
   });
 
+  it("completes while both players fidget", async () => {
+    const { sim, engine } = await rig({ noise: 0.004 });
+    sim.step(500);
+    const done = engine.calibrate({ players: 2, timeoutMs: 8000 });
+    let finished = false;
+    void done.then(() => (finished = true));
+    for (let i = 0; i < 40 && !finished; i++) {
+      // Shift weight back and forth: well under a body size, but far more than the old limit allowed.
+      const wiggle = i % 2 ? 0.02 : -0.02;
+      sim.moveTo(1, 0.25 + wiggle);
+      sim.moveTo(2, 0.75 - wiggle);
+      sim.step(150);
+      await Promise.resolve();
+    }
+    const result = await done;
+    expect(result.players[1]!.x).toBeLessThan(0.5);
+    expect(result.players[2]!.x).toBeGreaterThan(0.5);
+    expect(result.players[1]!.x).toBeGreaterThan(0.2);
+    expect(result.players[1]!.x).toBeLessThan(0.3);
+  });
+
+  it("survives a short tracking dropout without restarting", async () => {
+    const { sim, engine } = await rig();
+    sim.step(500);
+    const progress: number[] = [];
+    engine.api.events.on("calibration-progress", (e) => progress.push(e.progress));
+    const done = engine.calibrate({ players: 2 });
+    sim.step(500);
+    const before = progress.at(-1)!;
+    expect(before).toBeGreaterThan(0.2);
+    sim.dropout(200);
+    sim.step(1500);
+    await done;
+    // Progress never fell back while the picture was missing for 200 ms.
+    const afterStart = progress.slice(progress.findIndex((p) => p >= before));
+    for (let i = 1; i < afterStart.length; i++) expect(afterStart[i]!).toBeGreaterThanOrEqual(afterStart[i - 1]! - 1e-9);
+  });
+
+  it("restarts when a player walks across the room, and the shown progress drains rather than snapping to zero", async () => {
+    const { sim, engine } = await rig();
+    sim.step(500);
+    const progress: number[] = [];
+    engine.api.events.on("calibration-progress", (e) => progress.push(e.progress));
+    let finished = false;
+    const done = engine.calibrate({ players: 2 }).then((r) => ((finished = true), r));
+    sim.step(900);
+    const peak = progress.at(-1)!;
+    expect(peak).toBeGreaterThan(0.5);
+    sim.moveTo(1, 0.1);
+    sim.setWalking(2, 1);
+    for (let i = 0; i < 12; i++) {
+      sim.step(100);
+      await Promise.resolve();
+    }
+    expect(finished).toBe(false);
+    // It dropped, but not straight to zero on the first frame after the walk began.
+    const dip = progress.slice(progress.findIndex((p) => p === peak));
+    expect(Math.min(...dip)).toBeLessThan(peak);
+    sim.setWalking(2, 0);
+    sim.step(4000);
+    await done;
+    expect(finished).toBe(true);
+  });
+
   it("times out when a player is missing", async () => {
     const { sim, engine } = await rig({ players: 1 });
     const done = engine.calibrate({ players: 2, durationMs: 500, timeoutMs: 2000 });

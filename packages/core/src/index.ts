@@ -12,3 +12,4 @@ export * from "./camera/camera";
 export * from "./backends/mediapipe";
 export * from "./backends/motion-lite";
 export * from "./performance/check";
+export * from "./setup/join";

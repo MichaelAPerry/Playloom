@@ -1,9 +1,9 @@
-import { loadSettings, RateMeter, saveSettings, type KeypointName, type PlayerState } from "@playloom/core";
+import { loadSettings, PlayerJoin, RateMeter, saveSettings, type KeypointName, type PlayerState } from "@playloom/core";
 import { GameRuntime, PLAYER_COLORS, renderToCanvas, WebAudioPlayer } from "@playloom/runtime";
 import { PACKAGE_LIMITS, packageFileName, unpackGame, type GameDefinition } from "@playloom/sdk";
 import { bundledGames, exportGame, installedGames, installGame, loadImages, removeGame, type LibraryEntry } from "./library";
 import { focusFirst, setNavigation, startNavigation } from "./nav";
-import { loadCheck, MODE_LABELS, Tracking, type StoredCheck, type TrackingMode } from "./tracking";
+import { clearTrial, loadCheck, loadTrial, MODE_LABELS, Tracking, type StoredCheck, type TrackingMode } from "./tracking";
 
 // ---- Small DOM helpers ----------------------------------------------------------------------------
 
@@ -250,7 +250,7 @@ function updateChips(): void {
   const chip = document.getElementById("mode-chip");
   if (chip) {
     chip.textContent =
-      tracking.state === "starting" ? "Starting camera…" : tracking.state === "error" ? "No tracking" : tracking.practice ? "Practice mode" : api.status.capabilities?.skeleton ? "Camera on" : "Camera on · Lite";
+      tracking.state === "starting" ? "Starting camera…" : tracking.state === "tuning" ? "Finding the best tracking…" : tracking.state === "error" ? "No tracking" : tracking.practice ? "Practice mode" : api.status.capabilities?.skeleton ? "Camera on" : "Camera on · Lite";
   }
 }
 
@@ -258,8 +258,10 @@ async function chooseGame(entry: LibraryEntry): Promise<void> {
   if (tracking.state !== "running") {
     const answer = await ask(
       "The camera is not ready",
-      [h("p", {}, tracking.state === "starting" ? "Give it a moment and try again." : "Playloom cannot see anyone yet. You can try the camera again, or practise with the keyboard.")],
-      [{ id: "retry", label: "Try the camera again", cls: "go" }, { id: "practice", label: "Practise without a camera" }, { id: "no", label: "Back", cls: "quiet" }],
+      [h("p", {}, tracking.state === "tuning" ? "Playloom is finding the best tracking for this computer. It takes about ten seconds, and only happens once. Please try again in a moment." : tracking.state === "starting" ? "Give it a moment and try again." : "Playloom cannot see anyone yet. You can try the camera again, or practise with the keyboard.")],
+      tracking.state === "tuning"
+        ? [{ id: "no", label: "OK", cls: "go" }]
+        : [{ id: "retry", label: "Try the camera again", cls: "go" }, { id: "practice", label: "Practise without a camera" }, { id: "no", label: "Back", cls: "quiet" }],
       "no",
     );
     if (answer === "retry") await restartTracking();
@@ -304,11 +306,16 @@ function openSetup(then: LibraryEntry | null): void {
   show("setup");
 }
 
+/** The join monitor for the setup screen that is open, read by the picture. */
+let setupJoin: PlayerJoin | null = null;
+
 function renderSetup(): void {
   const run = ++setupRun;
+  const join = new PlayerJoin(api);
+  setupJoin = join;
   const title = h("h1", {}, "Player setup");
-  const text = h("p", {}, "Stand side by side where the camera can see you. Player 1 on the left, Player 2 on the right. Then stand still.");
-  const fill = h("i");
+  const text = h("p", {}, "Stand in your half of the picture and raise a hand to join.");
+  const slotEls = [1, 2].map((n) => h("span", { class: `chip p${n} slot`, "aria-live": "polite" }, h("i"), ""));
   const actions = h("div", { class: "row" });
   const finish = (): void => {
     const next = pendingGame;
@@ -316,44 +323,61 @@ function renderSetup(): void {
     if (next) launch(next);
     else show("home");
   };
-  const begin = (): void => {
-    title.textContent = "Player setup";
-    actions.replaceChildren(button(pendingGame ? "Skip" : "Back", () => (pendingGame ? finish() : show("home")), "quiet", { "data-first": true }));
-    focusFirst();
-    const off = api.events.on("calibration-progress", (e) => {
-      if (run !== setupRun) return;
-      fill.style.width = `${Math.round(e.progress * 100)}%`;
-      text.textContent =
-        e.playersSeen < 2
-          ? `I can see ${e.playersSeen === 0 ? "nobody" : "one player"} so far. Two players, side by side — Player 1 on the left, Player 2 on the right.`
-          : e.progress > 0
-            ? "Perfect. Stand still…"
-            : "I can see you both. Now stand still.";
-    });
-    tracking.engine
-      .calibrate({ players: 2, durationMs: 2000, timeoutMs: 45_000 })
-      .then(() => {
-        off();
-        if (run !== setupRun) return;
-        calibrated = true;
-        title.textContent = "All set!";
-        text.textContent = "Orange is Player 1. Blue is Player 2.";
-        fill.style.width = "100%";
-        audio.play("ding");
-        setTimeout(() => run === setupRun && finish(), 1400);
-      })
-      .catch((err: Error) => {
-        off();
-        if (run !== setupRun || /cancelled|restarted/i.test(err.message)) return;
-        title.textContent = "I could not see two players";
-        text.textContent = "Make sure both of you fit in the picture from head to waist, with some light on you, and try again.";
-        fill.style.width = "0%";
-        actions.replaceChildren(button("Try again", begin, "go", { "data-first": true }), button(pendingGame ? "Play anyway" : "Back", () => (pendingGame ? finish() : show("home")), "quiet"));
-        focusFirst();
-      });
+  const start = (): void => {
+    if (run !== setupRun) return;
+    try {
+      tracking.engine.calibrateNow({ ids: join.joinedIds });
+    } catch {
+      toast("I lost sight of someone. Raise a hand again to rejoin.");
+      return;
+    }
+    calibrated = true;
+    off();
+    finish();
   };
-  screenEl.replaceChildren(h("div", { class: "hud" }, title, text, h("div", { class: "bar" }, fill), actions));
-  begin();
+  let signature = "";
+  const refresh = (): void => {
+    if (run !== setupRun) return;
+    const [a, b] = join.slots;
+    const sig = JSON.stringify(join.slots);
+    if (sig === signature) return;
+    signature = sig;
+    [a, b].forEach((s, i) => {
+      const name = `Player ${i + 1}`;
+      slotEls[i]!.classList.toggle("on", s.joined);
+      slotEls[i]!.lastChild!.textContent = s.joined ? `✓ ${name} is in!` : s.detected ? `${name} — raise a hand to join` : `${name} — step into the ${i === 0 ? "left" : "right"} half`;
+    });
+    const count = join.joinedCount;
+    text.textContent =
+      count === 2
+        ? "Both of you are in. Press Start, or both raise both hands."
+        : count === 1
+          ? "Waiting for the other player. They raise a hand to join."
+          : "Stand in your half of the picture and raise a hand to join.";
+    const buttons: Node[] = [];
+    if (count === 2) buttons.push(button("Start", start, "go", { "data-first": true }));
+    else if (count === 1) buttons.push(button("Start with one player", start, "go"));
+    [a, b].forEach((s, i) => {
+      if (!s.joined) buttons.push(button(`Player ${i + 1} is ready`, () => (join.confirm((i + 1) as 1 | 2) ? refresh() : toast(`I cannot see anyone in the ${i === 0 ? "left" : "right"} half yet.`)), "quiet"));
+    });
+    buttons.push(button(pendingGame ? "Skip" : "Back", () => (pendingGame ? finish() : show("home")), "quiet", count === 0 ? { "data-first": true } : {}));
+    actions.replaceChildren(...buttons);
+    focusFirst();
+  };
+  join.on((e) => {
+    if (run !== setupRun) return;
+    if (e.type === "joined") audio.play("ding");
+    if (e.type === "start") start();
+  });
+  const off = api.events.on("frame", () => {
+    if (run !== setupRun) return off();
+    join.update();
+    refresh();
+  });
+  signature = "";
+  join.update();
+  refresh();
+  screenEl.replaceChildren(h("div", { class: "hud" }, title, h("div", { class: "row" }, ...slotEls), text, actions));
 }
 
 const BONES: Array<[KeypointName, KeypointName]> = [
@@ -378,6 +402,21 @@ function drawSetup(): void {
     ctx.drawImage(video, 0, 0, W, H);
     ctx.restore();
   }
+  // Two big slots: Player 1 on the left half, Player 2 on the right.
+  const slots = setupJoin?.slots;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "bold 44px system-ui, sans-serif";
+  [1, 2].forEach((n, i) => {
+    const color = PLAYER_COLORS[n] ?? "#fff";
+    const joined = !!slots?.[i]?.joined;
+    ctx.globalAlpha = joined ? 0.28 : 0.1;
+    ctx.fillStyle = color;
+    ctx.fillRect((i * W) / 2, 0, W / 2, H);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.fillText(joined ? `✓ Player ${n} is in!` : `Player ${n}`, ((i + 0.5) * W) / 2, 52);
+  });
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.setLineDash([14, 16]);
   ctx.lineWidth = 3;
@@ -386,11 +425,12 @@ function drawSetup(): void {
   ctx.lineTo(W / 2, H);
   ctx.stroke();
   ctx.setLineDash([]);
-  for (const p of api.players.all()) if (p.present) drawPlayer(p, W, H);
+  // Before anyone has joined, outline people by the half they stand in rather than by a provisional number.
+  for (const p of api.players.all()) if (p.present) drawPlayer(p, W, H, (p.bodyPosition?.x ?? 0) < 0.5 ? 1 : 2);
 }
 
-function drawPlayer(p: PlayerState, W: number, H: number): void {
-  const color = PLAYER_COLORS[p.id] ?? "#fff";
+function drawPlayer(p: PlayerState, W: number, H: number, id: number = p.id): void {
+  const color = PLAYER_COLORS[id] ?? "#fff";
   ctx.strokeStyle = color;
   ctx.lineWidth = 8;
   ctx.lineCap = "round";
@@ -411,7 +451,7 @@ function drawPlayer(p: PlayerState, W: number, H: number): void {
     ctx.fill();
   }
   if (p.bodyPosition) {
-    const label = `Player ${p.id}`;
+    const label = `Player ${id}`;
     ctx.font = "bold 34px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -567,6 +607,15 @@ function describeCheck(check: StoredCheck | null): string {
 let cameraList: Array<{ deviceId: string; label: string }> = [];
 let checking = false;
 
+function nowUsing(): string {
+  if (tracking.state === "tuning") return "Now using: finding the best tracking…";
+  if (tracking.state === "starting") return "Now using: starting…";
+  if (tracking.state !== "running") return `Now using: nothing — ${tracking.error?.message ?? "not started"}`;
+  const name = MODE_LABELS[tracking.active === "simulator" ? "practice" : (tracking.active as TrackingMode)] ?? tracking.active;
+  const hz = api.status.trackingHz;
+  return `Now using: ${name}${tracking.practice ? "" : ` · ${hz > 0 ? `${hz.toFixed(0)} updates a second` : "measuring…"}`}`;
+}
+
 function renderSettings(): void {
   const focused = (document.activeElement as HTMLElement | null)?.dataset.key;
   const option = (key: string, label: string, hint: string, value: string, onclick: () => void): HTMLButtonElement =>
@@ -588,10 +637,11 @@ function renderSettings(): void {
       "div",
       { class: "settings" },
       h("h2", {}, "Camera and tracking"),
-      option("mode", "Tracking", `Now using: ${tracking.state === "running" ? (MODE_LABELS[tracking.active === "simulator" ? "practice" : (tracking.active as TrackingMode)] ?? tracking.active) : tracking.state === "starting" ? "starting…" : "nothing — " + (tracking.error?.message ?? "not started")}`, MODE_LABELS[tracking.mode], () => setMode(cycle(modes, tracking.mode))),
+      option("mode", "Tracking", nowUsing(), MODE_LABELS[tracking.mode], () => setMode(cycle(modes, tracking.mode))),
       option("camera", "Camera", cameraList.length > 1 ? `${cameraList.length} cameras found` : "Choose which camera to use", camera?.label ?? "Default", () => {
         const ids = [undefined, ...cameraList.map((c) => c.deviceId)];
         settings.cameraId = cycle(ids, settings.cameraId && ids.includes(settings.cameraId) ? settings.cameraId : undefined);
+        clearTrial(); // a different camera may track at a different speed
         persist();
         void restartTracking();
       }),
@@ -605,6 +655,12 @@ function renderSettings(): void {
         tracking.apply({ sensitivity: cycle(sensitivities, sens)[0] });
         persist();
         renderSettings();
+      }),
+      option("retest", "Re-test tracking speed", "Automatic mode times each kind of tracking for a few seconds and keeps the fastest", loadTrial() ? "Start" : "Not tested", () => {
+        if (tracking.mode !== "auto") return void toast("Set Tracking to Automatic first.");
+        if (loadCheck()) return void toast("A full device check is saved and is used instead. Run Check this device again to refresh it.");
+        clearTrial();
+        void restartTracking();
       }),
       option("check", "Check this device", "Measures how well this computer and camera can track two players", checking ? "Checking…" : "Start", () => void runCheck()),
       report,
@@ -678,6 +734,7 @@ const renderRate = new RateMeter(2000);
 tracking.renderFps = () => renderRate.rate();
 let last = 0;
 let lastChips = 0;
+let lastSettingsState = tracking.state;
 
 function frame(now: number): void {
   renderRate.tick(now);
@@ -689,6 +746,14 @@ function frame(now: number): void {
     syncPlayOverlay();
   } else if (screen === "setup") {
     drawSetup();
+  } else if (screen === "settings" && now - lastChips > 500) {
+    lastChips = now;
+    const hint = screenEl.querySelector('[data-key="mode"] small');
+    if (hint) hint.textContent = nowUsing();
+    if (tracking.state !== lastSettingsState) {
+      lastSettingsState = tracking.state;
+      renderSettings();
+    }
   } else if (now - lastChips > 300) {
     lastChips = now;
     updateChips();

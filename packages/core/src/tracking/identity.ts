@@ -341,6 +341,17 @@ export class IdentityTracker {
     return this.events;
   }
 
+  /** Give player `from` the number `to`, if no one else holds it. Used when a lone player stays on their side. */
+  renumber(from: PlayerId, to: PlayerId): TrackerEvent[] {
+    this.events = [];
+    const tr = this.tracks.find((x) => x.id === from);
+    if (tr && !this.tracks.some((x) => x.id === to)) {
+      tr.id = to;
+      this.stableOrder = this.stableOrder.map((id) => (id === from ? to : id));
+    }
+    return this.events;
+  }
+
   /** Fix a player's reference body size from calibration so it no longer drifts. */
   setReferenceScale(id: PlayerId, scale: number): void {
     const tr = this.tracks.find((x) => x.id === id);
