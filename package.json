@@ -10,8 +10,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @playloom/playground dev",
-    "build": "pnpm --filter @playloom/playground build",
+    "dev": "pnpm --filter @playloom/console dev",
+    "dev:playground": "pnpm --filter @playloom/playground dev",
+    "build": "pnpm --filter @playloom/console build && pnpm --filter @playloom/playground build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",

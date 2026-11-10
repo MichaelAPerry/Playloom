@@ -12,7 +12,7 @@ Nothing is listed as working unless it was run.
 | Architecture assessment and decisions | Done; D1–D4 and D7 approved. |
 | 1 — Motion engine and simulator | **Software complete and tested with simulated and synthetic input. Not yet tested with a physical camera or real people.** |
 | 2 — First games and shared runtime | **Software complete and tested with simulated players. Not yet played by real people with a camera.** |
-| 3 — Console | Not started |
+| 3 — Console | **Software complete. Tested with keyboard, simulated players and synthetic video; Linux app built and run. Windows build and real-family use not verified.** |
 | 4 — Android TV | Not started |
 | 5 — Studio | Not started |
 | 6 — Community ecosystem | Not started |
@@ -59,7 +59,7 @@ All commands were run on 2026-11-10 on Linux x86-64, Node 22.23.
 | Playground, simulator, production build, headless Chromium 153 | Two players joined; mouse, jump and hands-up worked; 30 Hz tracking, 60 fps rendering; no console errors |
 | Playground, simulator, dev server | Same; no console errors under the Content-Security-Policy |
 | Playground, camera modes, synthetic two-person video | See table below; no requests to any other host |
-| CI and web-demo workflows | **Written but not yet run** — it runs on pull requests and pushes to `main`, and neither has happened |
+| CI, web-demo and desktop workflows | **Written but not yet run** — it runs on pull requests and pushes to `main`, and neither has happened |
 
 Measurements from the synthetic-video run (cloud container, 4 virtual cores, no GPU — not representative
 of real PCs):
@@ -100,6 +100,8 @@ The compatibility check measured all three and recommended **Standard** on the p
   this is the missing part of the Milestone 1 acceptance test. No install is needed once the web demo
   is published: merge to `main`, set **Settings → Pages → Source** to **GitHub Actions**, and open the
   address the "Publish web demo" workflow reports (see the README).
+- Run the **Desktop release** workflow (Actions tab) once the branch is on `main`, and try the Windows
+  installer — the Windows build has never been produced.
 - Enable *Private vulnerability reporting* in the repository's security settings, which
   [SECURITY.md](../SECURITY.md) refers to.
 
@@ -158,19 +160,73 @@ fair and physically comfortable is unknown.
 3. Movement is constant velocity plus gravity; there is no bouncing or friction.
 4. Sound has only been exercised through a recording stub in tests; it has not been listened to.
 5. Lite mode can play both games in principle (they need only hands), but this has not been tried.
-6. The playground remains a developer tool, not the Console.
+
+## Milestone 3 — Playloom Console
+
+### Delivered
+
+| Deliverable | Where | Notes |
+|---|---|---|
+| Fullscreen launcher | `apps/console` | Large-type library of game tiles; live Player 1 / Player 2 indicators |
+| Game selection, launch and exit | `apps/console/src/main.ts` | Pause menu, results, play again, back to library |
+| Two-player setup | Console *Player setup* | Mirror view with each player outlined in their colour; runs before the first game of a session |
+| Settings | Console *Settings* | Tracking mode, camera, mirror, sensitivity, sound, full screen |
+| Hardware benchmark | *Check this device* | Offered on first run; result in plain words; saved and used by Automatic mode; report can be saved |
+| Local game installation, import and export | `packages/sdk/src/package.ts`, Console | `.playloom` packages, fully checked before storing; permission prompt; remove; save a copy |
+| Controller and remote navigation | `apps/console/src/nav.ts` | Arrow keys / remote, Enter, Back; gamepad D-pad, stick, A, B, Start |
+| Hardware warnings | Console | Warns before a game the active tracking cannot support |
+| Offline operation | Console page policy, desktop shell | No network requests; verified below |
+| Desktop releases | `platforms/desktop`, `.github/workflows/desktop.yml` | Electron shell; Windows installer + portable exe and Linux AppImage built by workflow |
+| Practice mode | Console | Play with the keyboard when there is no camera |
+
+### Acceptance criterion
+
+> A family can launch the application, calibrate two players, choose a game, and play without
+> accessing a command line.
+
+**Met in testing with a synthetic camera; not yet tried by a family.** In the browser build with a video
+file standing in for the camera, the whole path ran with no command line involved: the Console opened,
+offered the device check, a game was chosen, player setup recognised and numbered both people, and the
+game started. Getting the application without a command line depends on the two workflows (web demo and
+desktop release), which have been written but have not run yet.
+
+### Test evidence (2026-11-10)
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck`, `pnpm test`, `pnpm build` | Passed; 106 of 106 tests (10 files), including 10 package tests |
+| Console, no camera, keyboard only (headless Chromium) | "No camera was found" shown; *Practise without a camera* started two simulated players; arrow keys and Enter launched a game; Esc paused; menu worked; no console errors; no requests to other hosts |
+| Installing a game | A `.playloom` file showed the permission prompt, installed, and was still there after reloading; a non-package file was refused with a message |
+| Console with synthetic two-person camera | Welcome prompt → game chosen → player setup calibrated both players (Player 1 left at x≈0.25, Player 2 right at x≈0.74) → game playing |
+| Desktop app from source (Electron 45, Linux, virtual display) | Window loaded; camera granted; full body tracking started; page had no Node.js access |
+| Desktop app, hostile page behaviour | `fetch` to another site: refused. Paths outside the app folder (`../main.cjs`, encoded variants): 404 / 403. `window.open`: denied |
+| Linux package | `npm run dist` produced `Playloom-0.1.0.AppImage` (141 MB); the packaged program was run and passed the same checks |
+| Windows package | **Not built or run** — it can only be built on Windows; the workflow does this |
+| Gamepad | **Not tested** — no gamepad is available here; the code path is exercised only by reading |
+
+A real defect was found and fixed this way: the first version of the desktop shell blocked its own page
+from loading, because the request filter also caught the shell's internal file reads.
+
+### Known limitations
+
+1. Not tried by real families; the wording, sizes and flow are untested with children.
+2. Windows build, installer behaviour and gamepads are unverified.
+3. The desktop app is unsigned (Windows SmartScreen will warn) and uses the default Electron icon.
+4. No parental lock on Settings.
+5. Menus need a keyboard, remote, gamepad or mouse; they are not motion-controlled.
+6. Pose estimation still runs on the main thread (Milestone 1 limitation 2).
+7. Installed games are stored per browser profile; clearing site data removes them.
+8. The Console has no automated browser tests in the repository; the checks above were scripted by hand.
 
 ## Next
 
-Finishing Milestone 1:
+Before Milestone 4, three things carried over that affect how the games feel:
 
 1. Move pose estimation into a worker.
-2. MoveNet MultiPose backend, and include it in the compatibility check.
-3. Interpolate player state to the display rate.
-4. Automated browser tests for the playground, including a camera test with a synthetic video.
-5. Tune thresholds from recordings of real play, once recordings exist.
+2. MoveNet MultiPose backend (decision D3), measured by the device check.
+3. Automated browser tests for the Console and playground in CI.
 
-Milestone 3 — Console: fullscreen child-friendly launcher, game library and local installation,
-player setup flow, settings, compatibility check on first run, remote/gamepad navigation, and Electron
-packaging for Windows and Linux. The image/audio asset pipeline and package container are needed for
-local installation and will be built first.
+Milestone 4 — Android TV: Kotlin shell hosting the Console in a WebView, camera compatibility probe
+(WebView → Camera2 external → user-space UVC), remote navigation, APK build in CI. No Android hardware
+is available in the development environment, so hardware acceptance will have to be reported as
+unverified until someone runs it on a device.

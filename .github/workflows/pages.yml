@@ -1,4 +1,5 @@
-# Publishes the playground as a web page so it can be tried from any browser with no install.
+# Publishes the Console as a web page (and the developer playground under /playground/) so Playloom
+# can be tried from any browser with no install.
 # One-time setup by the repository owner: Settings → Pages → Build and deployment → Source: "GitHub Actions".
 name: Publish web demo
 
@@ -30,9 +31,14 @@ jobs:
       - run: pnpm test
       - run: pnpm fetch-models
       - run: pnpm build
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r apps/console/dist/. site/
+          cp -r apps/playground/dist site/playground
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/playground/dist
+          path: site
   deploy:
     needs: build
     runs-on: ubuntu-latest

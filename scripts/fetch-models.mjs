@@ -11,7 +11,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Both apps serve the same files; the playground copy is the master and is mirrored at the end.
 const publicDir = join(root, "apps/playground/public");
+const mirrors = [join(root, "apps/console/public")];
 const manifest = JSON.parse(readFileSync(join(root, "scripts/models.json"), "utf8"));
 const all = process.argv.includes("--all");
 
@@ -52,6 +54,9 @@ for (const model of manifest.models) {
     failed = true;
     console.log(`FAILED: ${err.message}`);
   }
+}
+for (const dir of mirrors) {
+  for (const sub of ["mediapipe", "models"]) cpSync(join(publicDir, sub), join(dir, sub), { recursive: true });
 }
 if (failed) {
   console.error("\nSome models could not be fetched. Skeleton tracking will be unavailable; the simulator and Lite mode still work.");

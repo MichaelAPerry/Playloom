@@ -15,18 +15,25 @@ never leave it. See [docs/privacy.md](docs/privacy.md).
 
 ## Where the project is
 
-Milestones 1 and 2 are built: the motion engine and simulator, the game format and rules runtime, and
-two games — **Mole Mayhem** and **Slice Party** — that are plain data files run by that runtime. There
-is a developer playground to try them in; the Console and Studio do not exist yet. The detailed picture —
-what works, what was tested and how, and what has not been verified — is in
-[docs/status.md](docs/status.md).
+Milestones 1–3 are built: motion tracking and a simulator, a game format with a rules runtime, two games
+(**Mole Mayhem** and **Slice Party**) that are plain data files, and the **Console** — a full-screen
+launcher with player setup, settings and game installation, packaged as a desktop app for Windows and
+Linux. Android and Studio do not exist yet.
+
+Almost all testing so far has used simulated players and synthetic video. What has and has not been
+verified is recorded in [docs/status.md](docs/status.md).
 
 ## Try it in a browser (no install)
 
-Once the repository owner has enabled GitHub Pages (Settings → Pages → Source: **GitHub Actions**), every
-push to `main` publishes the playground at `https://<owner>.github.io/Playloom/`. It works in Chrome or
-Edge on Windows, Linux or a Chromebook. The browser asks for camera permission only when you choose a
-camera mode; pictures never leave your computer.
+With GitHub Pages enabled (Settings → Pages → Source: **GitHub Actions**), every push to `main` publishes
+the Console at `https://<owner>.github.io/Playloom/` and the developer playground at `…/Playloom/playground/`.
+Use Chrome or Edge. The browser asks for the camera; pictures never leave your computer. No webcam?
+Choose **Practise without a camera**.
+
+## Windows and Linux app
+
+Run the **Desktop release** workflow from the repository's Actions tab and download the installer from
+the finished run. See [platforms/desktop/README.md](platforms/desktop/README.md).
 
 ## Try it from source
 
@@ -44,12 +51,9 @@ pnpm fetch-models
 pnpm dev
 ```
 
-Open the address it prints. The playground starts in the **simulator**, which needs no camera: move the
-mouse to steer a player's hand, and use the keys listed on the page to walk, jump, duck and lean two
-players. Pick a game under **Game**. Switch the source to a camera mode to play with two real people.
-
-`pnpm fetch-models` downloads the pose model once (about 6 MB, checksum-verified). After that,
-everything runs without a network connection.
+Open the address it prints. `pnpm fetch-models` downloads the pose model once (about 6 MB,
+checksum-verified); after that everything runs without a network connection. `pnpm dev:playground`
+starts the developer playground instead, with a skeleton view, event log and recording tools.
 
 ## Repository layout
 
@@ -59,11 +63,13 @@ packages/simulator   simulated players, fault injection, pose recording and play
 packages/sdk         game format types and validator (MIT)
 packages/runtime     interpreter for game definitions, canvas renderer, built-in sounds
 games/               bundled games as data files
-apps/playground      developer tool: motion test and game player
+apps/console         the family-facing launcher
+apps/playground      developer tool: motion test, event log, recording
+platforms/desktop    Electron shell for Windows and Linux
 docs/                architecture, status, API and guides
 ```
 
-The Console, Studio and platform shells arrive with their milestones; the planned
+Studio and the Android shell arrive with their milestones; the planned
 layout is in [docs/architecture/assessment.md](docs/architecture/assessment.md).
 
 ## Documentation
@@ -71,7 +77,8 @@ layout is in [docs/architecture/assessment.md](docs/architecture/assessment.md).
 - [Project status and test evidence](docs/status.md)
 - [Architecture assessment](docs/architecture/assessment.md) and [decisions](docs/architecture/decisions.md)
 - [Motion API](docs/motion-api.md)
-- [Game format](docs/game-format.md)
+- [Console](docs/console.md)
+- [Game format](docs/game-format.md) and [game packages](docs/game-packages.md)
 - [Art prompts for the bundled games](docs/art-prompts.md)
 - [Simulator](docs/simulator.md)
 - [Building and testing](docs/building.md)

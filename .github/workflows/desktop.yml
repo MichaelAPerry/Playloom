@@ -1,0 +1,42 @@
+# Builds the Windows and Linux desktop applications. Run it by hand from the Actions tab, or push a
+# tag such as v0.1.0. The installers are attached to the workflow run as artifacts.
+name: Desktop release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm fetch-models
+      - run: pnpm build
+      - name: Package
+        working-directory: platforms/desktop
+        run: |
+          npm ci
+          npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playloom-${{ matrix.os == 'windows-latest' && 'windows' || 'linux' }}
+          path: |
+            platforms/desktop/release/*.exe
+            platforms/desktop/release/*.AppImage
+          if-no-files-found: error

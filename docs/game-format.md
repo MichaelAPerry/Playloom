@@ -8,8 +8,8 @@ in `packages/sdk/src/validate.ts` (both MIT-licensed). The bundled games in `gam
 examples.
 
 Status: implemented with built-in shapes and sounds, plus image assets for sprites and backgrounds.
-**Not yet implemented:** audio assets, sprite animation, the `.playloom` package (ZIP) container, and a
-published JSON Schema file. These are planned and will be additive.
+**Not yet implemented:** audio assets, sprite animation and a published JSON Schema file. Games travel
+as [`.playloom` packages](game-packages.md). These are planned and will be additive.
 
 ## Pictures
 

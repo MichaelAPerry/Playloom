@@ -11,17 +11,19 @@
 |---|---|
 | `pnpm install` | Install dependencies from the lockfile |
 | `pnpm fetch-models` | Copy MediaPipe's WASM runtime and download the pose model, verifying its SHA-256 (`--all` also fetches the larger model) |
-| `pnpm dev` | Run the playground with live reload |
+| `pnpm dev` | Run the Console with live reload |
+| `pnpm dev:playground` | Run the developer playground |
 | `pnpm test` | Run the automated tests |
 | `pnpm typecheck` | Type-check every package |
-| `pnpm build` | Produce a static build in `apps/playground/dist` |
+| `pnpm build` | Produce static builds in `apps/console/dist` and `apps/playground/dist` |
 | `pnpm check` | Type-check, test and build |
 
 The model files are not stored in the repository. `scripts/models.json` pins each model's URL and
 checksum, so builds are reproducible and a tampered download is rejected. Without the models, the
 simulator and Lite mode still work; skeleton tracking reports an error.
 
-The static build can be served by any web server or opened through `pnpm --filter @playloom/playground preview`.
+The static builds can be served by any web server, or previewed with `pnpm --filter @playloom/console preview`.
+The desktop application is built separately; see `platforms/desktop/README.md`.
 Browsers only allow camera access on `localhost` or HTTPS.
 
 ## Tests
@@ -44,5 +46,6 @@ them into automated browser tests is a listed task.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs install, type-check, tests, model fetch and build on Ubuntu and Windows
-for pushes to `main` and for pull requests. `.github/workflows/pages.yml` publishes the playground to
-GitHub Pages on pushes to `main`.
+for pushes to `main` and for pull requests. `.github/workflows/pages.yml` publishes the Console and playground to
+GitHub Pages on pushes to `main`. `.github/workflows/desktop.yml` builds the Windows and Linux applications
+when run by hand or when a `v*` tag is pushed.

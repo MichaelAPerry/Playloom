@@ -5,6 +5,7 @@ import {
   MotionEngine,
   MotionLiteSource,
   RateMeter,
+  runCompatibilityCheck,
   saveSettings,
   type FrameSink,
   type MotionEvents,
@@ -23,7 +24,6 @@ import { GameRuntime, renderToCanvas, WebAudioPlayer } from "@playloom/runtime";
 import { parseGame, validateGame, type GameDefinition } from "@playloom/sdk";
 import moleMayhem from "../../../games/mole-mayhem/game.json";
 import sliceParty from "../../../games/slice-party/game.json";
-import { runCompatibilityCheck } from "./benchmark";
 import { draw } from "./draw";
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;

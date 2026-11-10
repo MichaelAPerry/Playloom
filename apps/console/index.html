@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Offline-first: nothing is loaded from the network, and nothing may be sent to it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' blob: data:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Playloom</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="stage" width="1280" height="720" aria-hidden="true"></canvas>
+    <div id="screen"></div>
+    <div id="overlay" hidden></div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <input type="file" id="package-file" accept=".playloom,application/zip" hidden />
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

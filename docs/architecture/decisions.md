@@ -9,6 +9,7 @@ Decisions made by the project owner. The reasoning and the alternatives consider
 | D2 | **Electron** is the desktop shell for Windows and Linux. | Approved | 2026-11-10 |
 | D3 | **Pluggable tracking backends** behind one interface: MediaPipe Pose Landmarker first, MoveNet MultiPose as a benchmarked alternative, non-ML motion regions for Lite. Playloom's own identity tracker sits above all of them, and the startup benchmark chooses per device. | Approved | 2026-11-10 |
 | D4 | **GPL-3.0-or-later** for the platform, with a written statement that games and assets belong to their authors, and MIT for SDK schemas, type definitions and templates. | Approved | 2026-11-10 |
+| D8 | Game packages are ZIP files with `game.json` and `assets/`; there is no separate manifest, so version and requirements have one source of truth. Read with fflate (MIT). | Routine choice, recorded for visibility | 2026-11-10 |
 | D5 | Android: Kotlin shell hosting the same web bundle, with native camera capture and inference feeding landmarks over the bridge where the WebView cannot see the camera. | Follows from D1; to be confirmed at Milestone 4 | — |
 | D6 | Rendering: Playloom's own data-driven runtime, Canvas 2D first, PixiJS behind the same interface when needed. | Follows from D1; to be confirmed at Milestone 2 | — |
 | D7 | **MediaPipe telemetry must be blocked.** Usage reporting to Google is never allowed to leave the device. See below. | Approved | 2026-11-10 |

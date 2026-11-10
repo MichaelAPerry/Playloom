@@ -1,12 +1,7 @@
-import {
-  listCameras,
-  recommendProfile,
-  type BackendMeasurement,
-  type CompatibilityReport,
-  type MotionEngine,
-  type PoseSource,
-  type ProfileRecommendation,
-} from "@playloom/core";
+import { listCameras } from "../camera/camera";
+import type { MotionEngine } from "../engine";
+import type { PoseSource } from "../types";
+import { recommendProfile, type BackendMeasurement, type CompatibilityReport, type ProfileRecommendation } from "./profile";
 
 const MEASURE_MS = 4000;
 const WARMUP_MS = 1500;

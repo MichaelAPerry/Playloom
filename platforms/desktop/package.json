@@ -1,0 +1,51 @@
+{
+  "name": "playloom-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playloom Console for Windows and Linux",
+  "author": "Playloom contributors",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/MichaelAPerry/Playloom",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-app": "node prepare-app.cjs",
+    "start": "npm run prepare-app && electron .",
+    "dist": "npm run prepare-app && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "org.playloom.console",
+    "productName": "Playloom",
+    "files": [
+      "main.cjs",
+      "app/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
+    },
+    "publish": null
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MichaelAPerry/Playloom.git"
+  }
+}

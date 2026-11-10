@@ -4,5 +4,10 @@
   "description": "Playloom game format: type definitions and validator",
   "license": "MIT",
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "fflate": "0.8.3"
+  }
 }
