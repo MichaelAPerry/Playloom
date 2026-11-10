@@ -59,7 +59,8 @@ All commands were run on 2026-11-10 on Linux x86-64, Node 22.23.
 | Playground, simulator, production build, headless Chromium 153 | Two players joined; mouse, jump and hands-up worked; 30 Hz tracking, 60 fps rendering; no console errors |
 | Playground, simulator, dev server | Same; no console errors under the Content-Security-Policy |
 | Playground, camera modes, synthetic two-person video | See table below; no requests to any other host |
-| CI, web-demo and desktop workflows | **Written but not yet run** — it runs on pull requests and pushes to `main`, and neither has happened |
+| CI workflow on GitHub | Passed on Ubuntu and Windows (first run, 2026-11-10) |
+| Web demo and desktop workflows | See the Milestone 3 evidence table |
 
 Measurements from the synthetic-video run (cloud container, 4 virtual cores, no GPU — not representative
 of real PCs):
@@ -76,8 +77,10 @@ The compatibility check measured all three and recommended **Standard** on the p
 
 1. **No real-world validation.** Tracking quality, gesture thresholds and identity behaviour with real
    people, clothing, lighting and rooms are untested. The thresholds are reasoned first values.
-2. **Pose estimation runs on the main thread.** With the processor backend, rendering dropped to about
-   15 fps in the test above. It needs to move to a worker.
+2. ~~Pose estimation runs on the main thread.~~ **Fixed:** it now runs in a worker. In the same test,
+   rendering stayed at 60 fps while tracking ran at 14 Hz (it was about 15 fps before). Under the
+   development server (`pnpm dev`) the worker cannot load and the engine falls back to the main thread;
+   built versions use the worker.
 3. **Same-size players who swap places out of view** and return on each other's side are numbered by
    side. No skeleton-only tracker can detect this.
 4. **Size-based identification** needs sizes that differ by 30 % or more and assumes players stay at a
@@ -202,7 +205,7 @@ desktop release), which have been written but have not run yet.
 | Desktop app from source (Electron 45, Linux, virtual display) | Window loaded; camera granted; full body tracking started; page had no Node.js access |
 | Desktop app, hostile page behaviour | `fetch` to another site: refused. Paths outside the app folder (`../main.cjs`, encoded variants): 404 / 403. `window.open`: denied |
 | Linux package | `npm run dist` produced `Playloom-0.1.0.AppImage` (141 MB); the packaged program was run and passed the same checks |
-| Windows package | **Not built or run** — it can only be built on Windows; the workflow does this |
+| Windows package | See the note under this table |
 | Gamepad | **Not tested** — no gamepad is available here; the code path is exercised only by reading |
 
 A real defect was found and fixed this way: the first version of the desktop shell blocked its own page
@@ -215,17 +218,16 @@ from loading, because the request filter also caught the shell's internal file r
 3. The desktop app is unsigned (Windows SmartScreen will warn) and uses the default Electron icon.
 4. No parental lock on Settings.
 5. Menus need a keyboard, remote, gamepad or mouse; they are not motion-controlled.
-6. Pose estimation still runs on the main thread (Milestone 1 limitation 2).
 7. Installed games are stored per browser profile; clearing site data removes them.
 8. The Console has no automated browser tests in the repository; the checks above were scripted by hand.
 
 ## Next
 
-Before Milestone 4, three things carried over that affect how the games feel:
+Carried over (pose estimation has already been moved into a worker):
 
-1. Move pose estimation into a worker.
-2. MoveNet MultiPose backend (decision D3), measured by the device check.
-3. Automated browser tests for the Console and playground in CI.
+1. MoveNet MultiPose backend (decision D3), measured by the device check.
+2. Automated browser tests for the Console and playground in CI.
+3. Tuning from real play, once the owner has tried the web demo with a camera.
 
 Milestone 4 — Android TV: Kotlin shell hosting the Console in a WebView, camera compatibility probe
 (WebView → Camera2 external → user-space UVC), remote navigation, APK build in CI. No Android hardware

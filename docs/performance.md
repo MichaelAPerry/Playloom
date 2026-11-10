@@ -42,7 +42,7 @@ The report contains:
 
 - `latencyMs` covers capture to API. Add roughly one screen frame, plus the camera's own exposure and
   USB delay, for what a player feels.
-- Pose estimation currently runs on the page's main thread, so a slow model also lowers `renderFps`.
-  Moving it to a worker is a listed task.
+- Pose estimation runs in a worker, so a slow model lowers the tracking rate but should not lower
+  `renderFps`. (Under the development server it falls back to the main thread.)
 - The graphics-card path can be *slower* than the processor path on machines without a real GPU driver
   (software rendering). That is why both are measured.

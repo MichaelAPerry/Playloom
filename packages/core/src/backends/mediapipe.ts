@@ -1,4 +1,5 @@
 import { onVideoFrame, openCamera, type CameraRequest, type OpenCamera } from "../camera/camera";
+import type { PoseWorkerFrame, PoseWorkerInit, PoseWorkerReply } from "./pose-worker";
 import type { FrameSink, KeypointName, PoseSource, RawPerson, Skeleton, SourceCapabilities } from "../types";
 
 /**
@@ -68,6 +69,11 @@ export interface MediaPipeOptions {
   maxHz: number;
   minDetectionConfidence: number;
   minTrackingConfidence: number;
+  /**
+   * Run the model in a worker so it cannot stall rendering. If the worker cannot start, the model
+   * runs on the page's own thread instead.
+   */
+  worker: boolean;
 }
 
 export const DEFAULT_MEDIAPIPE_OPTIONS: MediaPipeOptions = {
@@ -79,6 +85,7 @@ export const DEFAULT_MEDIAPIPE_OPTIONS: MediaPipeOptions = {
   maxHz: 0,
   minDetectionConfidence: 0.5,
   minTrackingConfidence: 0.5,
+  worker: true,
 };
 
 interface Landmarker {
@@ -94,7 +101,11 @@ export class MediaPipePoseSource implements PoseSource {
   /** Delegate actually in use after any fallback. */
   activeDelegate: "GPU" | "CPU" | null = null;
 
+  /** Where the model is running. */
+  thread: "worker" | "main" | null = null;
+
   private landmarker: Landmarker | null = null;
+  private worker: Worker | null = null;
   private stopLoop: (() => void) | null = null;
   private lastInference = -Infinity;
 
@@ -105,6 +116,93 @@ export class MediaPipePoseSource implements PoseSource {
   }
 
   async start(sink: FrameSink): Promise<void> {
+    const o = this.options;
+    // Open the camera first: if there is none, there is no point loading a model.
+    this.camera = await openCamera(o.camera);
+    try {
+      if (o.worker && typeof Worker !== "undefined" && typeof createImageBitmap === "function") {
+        try {
+          await this.startWorker(sink);
+          this.thread = "worker";
+          return;
+        } catch (err) {
+          console.warn("[playloom] pose worker unavailable, using the main thread:", err);
+          this.worker?.terminate();
+          this.worker = null;
+        }
+      }
+      await this.startOnMainThread(sink);
+      this.thread = "main";
+    } catch (err) {
+      this.camera?.stop();
+      this.camera = null;
+      throw err;
+    }
+  }
+
+  private startWorker(sink: FrameSink): Promise<void> {
+    const o = this.options;
+    const { video, width, height } = this.camera!;
+    const aspect = width / height;
+    const minInterval = o.maxHz > 0 ? 1000 / o.maxHz : 0;
+    const absolute = (path: string): string => new URL(path, document.baseURI).href;
+    const worker = new Worker(new URL("./pose-worker.ts", import.meta.url), { type: "classic", name: "playloom-pose" });
+    this.worker = worker;
+
+    return new Promise<void>((resolve, reject) => {
+      let ready = false;
+      let busy = false;
+      const timeout = setTimeout(() => reject(new Error("The pose worker did not start in time")), 30_000);
+      worker.onerror = (e) => {
+        clearTimeout(timeout);
+        if (!ready) reject(new Error(e.message || "The pose worker failed to load"));
+      };
+      worker.onmessage = (event: MessageEvent<PoseWorkerReply>) => {
+        const message = event.data;
+        if (message.type === "ready") {
+          clearTimeout(timeout);
+          ready = true;
+          this.activeDelegate = message.delegate;
+          // One frame in flight at a time: a slow model simply sees fewer frames, never a backlog.
+          this.stopLoop = onVideoFrame(video, (captureTime) => {
+            if (busy || captureTime - this.lastInference < minInterval) return;
+            busy = true;
+            this.lastInference = captureTime;
+            createImageBitmap(video).then(
+              (bitmap) => {
+                if (this.worker !== worker) return bitmap.close();
+                const frame: PoseWorkerFrame = { type: "frame", bitmap, time: captureTime };
+                worker.postMessage(frame, [bitmap]);
+              },
+              () => (busy = false),
+            );
+          });
+          resolve();
+        } else if (message.type === "result") {
+          busy = false;
+          if (this.worker === worker) sink({ timestamp: message.time, aspect, mirrored: false, people: message.poses.map(personFromLandmarks) });
+        } else {
+          busy = false;
+          if (!ready) {
+            clearTimeout(timeout);
+            reject(new Error(message.message));
+          } else console.warn("[playloom] pose worker:", message.message);
+        }
+      };
+      const init: PoseWorkerInit = {
+        type: "init",
+        wasmPath: absolute(o.wasmPath),
+        modelPath: absolute(o.modelPath),
+        delegate: o.delegate,
+        maxPeople: o.maxPeople,
+        minDetectionConfidence: o.minDetectionConfidence,
+        minTrackingConfidence: o.minTrackingConfidence,
+      };
+      worker.postMessage(init);
+    });
+  }
+
+  private async startOnMainThread(sink: FrameSink): Promise<void> {
     const o = this.options;
     const vision = await import("@mediapipe/tasks-vision");
     const fileset = await vision.FilesetResolver.forVisionTasks(o.wasmPath);
@@ -126,38 +224,27 @@ export class MediaPipePoseSource implements PoseSource {
       this.landmarker = await create("CPU");
       this.activeDelegate = "CPU";
     }
-
-    try {
-      this.camera = await openCamera(o.camera);
-    } catch (err) {
-      this.landmarker.close();
-      this.landmarker = null;
-      throw err;
-    }
-    const { video } = this.camera;
-    const aspect = this.camera.width / this.camera.height;
+    const { video } = this.camera!;
+    const aspect = this.camera!.width / this.camera!.height;
     const minInterval = o.maxHz > 0 ? 1000 / o.maxHz : 0;
-
     this.stopLoop = onVideoFrame(video, (captureTime) => {
       if (!this.landmarker || captureTime - this.lastInference < minInterval) return;
       this.lastInference = captureTime;
       // MediaPipe requires strictly increasing timestamps.
       const result = this.landmarker.detectForVideo(video, performance.now());
-      sink({
-        timestamp: captureTime,
-        aspect,
-        mirrored: false,
-        people: result.landmarks.map(personFromLandmarks),
-      });
+      sink({ timestamp: captureTime, aspect, mirrored: false, people: result.landmarks.map(personFromLandmarks) });
     });
   }
 
   async stop(): Promise<void> {
     this.stopLoop?.();
     this.stopLoop = null;
+    this.worker?.terminate();
+    this.worker = null;
     this.camera?.stop();
     this.camera = null;
     this.landmarker?.close();
     this.landmarker = null;
+    this.thread = null;
   }
 }
