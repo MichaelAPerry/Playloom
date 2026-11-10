@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#11163a" />
     <!-- Offline-first: nothing is loaded from the network, and nothing may be sent to it. -->
     <meta
       http-equiv="Content-Security-Policy"
@@ -15,7 +16,6 @@
     <canvas id="stage" width="1280" height="720" aria-hidden="true"></canvas>
     <div id="screen"></div>
     <div id="overlay" hidden></div>
-    <div id="toast" role="status" aria-live="polite" hidden></div>
     <input type="file" id="package-file" accept=".playloom,application/zip" hidden />
     <script type="module" src="./src/main.ts"></script>
   </body>

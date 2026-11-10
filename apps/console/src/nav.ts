@@ -22,6 +22,11 @@ function candidates(): HTMLElement[] {
   return [...layer().querySelectorAll<HTMLElement>("button:not(:disabled)")].filter((el) => el.offsetParent !== null);
 }
 
+/** Everything that can be focused in the current layer, in reading order. Used by tests and checks. */
+export function focusables(): HTMLElement[] {
+  return candidates();
+}
+
 /** Focus the element marked `data-first`, or else the first button, in the current layer. */
 export function focusFirst(): void {
   const all = candidates();
@@ -51,6 +56,12 @@ export function move(direction: Direction): void {
       bestScore = score;
       best = el;
     }
+  }
+  // Nothing lies that way (a ragged grid, or a control hidden behind a corner): fall back to the
+  // next or previous control in reading order, so every control can always be reached.
+  if (!best) {
+    const i = all.indexOf(current);
+    best = (direction === "down" || direction === "right" ? all[i + 1] : all[i - 1]) ?? null;
   }
   if (best) {
     best.focus();

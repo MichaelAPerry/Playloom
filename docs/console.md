@@ -11,7 +11,13 @@ on an Android TV box.
 | **Home** | Game tiles, plus *Player setup*, *Add a game* and *Settings*. Chips at the top light up in orange and blue when Player 1 and Player 2 are in view. |
 | **Player setup** | Shows the camera like a mirror with two big slots: Player 1 (left half, orange) and Player 2 (right half, blue). There is no timer. Each person stands in their half and raises a hand to join ("Player 1 is in!"); when both are in, press Start — or both raise both hands. *Player 1 is ready* / *Player 2 is ready* buttons confirm whoever is detected in a half from the keyboard or remote, and *Start with one player* is offered once one person has joined (games wait for the second player). Runs automatically before the first game of a session. |
 | **Playing** | The game fills the screen. It pauses by itself if a player walks away or if it loses track of who is who, and says what to do. |
-| **Settings** (for grown-ups) | Tracking mode, camera, mirror, gesture sensitivity, the device check, sound, full screen, and installed games. |
+| **Settings** (for grown-ups) | Tracking mode, camera, mirror, gesture sensitivity, *Camera picture behind the game* (Off / Faint / Strong, default Off), sound, full screen, the device check, and installed games. Short lists are shown as choices with the current one ticked; Tracking and Camera open a list. |
+
+### Layout, buttons and nothing on a timer
+
+Every screen has the same header: a **Back** button (on the home screen, the Playloom name), the title, and chips showing the camera and which players are in view. During a game a **Pause** button sits bottom right. All of these work with the mouse, arrow keys/remote (Enter to press) and gamepad. The focused control has a thick yellow ring. Dialogs trap focus, and focus returns to where it was when they close.
+
+Nothing disappears or advances on its own. Messages are dialogs with an OK button or text written into the screen. Machine work shows real progress: *Getting your camera ready* on the home screen ("Test 1 of 2"), and *Checking this computer* ("Test 2 of 3") with a bar. The only thing that continues by itself is a game that paused because players walked out of view, which carries on when it sees them again. The size follows the window (14 px text at 1024 x 600, about 26 px at full HD, 52 px at 4K); the game and setup picture are drawn at the window's own proportions and never stretched.
 
 ### Controls
 

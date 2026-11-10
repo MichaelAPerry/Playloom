@@ -231,6 +231,12 @@ Changed after the owner reported a confusing setup timer and slow tracking:
 
 Tested: `pnpm check` (typecheck, tests, builds) with the simulator tests for fidgeting, a 200 ms dropout, walking, one-player timeout, raise-to-join per side, glitch rejection, both-hands start, one-player continue and `calibrateNow`; unit tests for the trial decision. The built Console was run in headless Chromium with Chromium's fake camera (no people in view): the trial ran, timed the graphics path (0 updates a second there) then the processor (about 19), stored the processor choice, and Settings showed "17 updates a second" and the *Re-test* option; no errors. **Not tested:** the setup screen's on-screen layout and join flow with real people (the fake camera shows nobody and practice mode skips setup), real cameras, real GPUs, gamepad.
 
+### Console interface pass (2026-11-10)
+
+Rebuilt the Console's look and flow after the owner's first try: no timers or auto-advance (dialogs and inline text replace toasts; the device check and speed trial show step progress), a consistent header with Back and a Pause button in games, focus rings, segmented settings, an arrow-key fallback so every control is reachable, hand cursors with halo, number and L/R tag, outlined HUD text, a camera backdrop option, SVG icons, and a layout in em units that scales with the window.
+
+Checked (headless Chromium, built app, fake camera video, keyboard and mouse): home, alert, settings, setup, both games, pause, results, install and "not a game" dialogs at 1024x600, 1280x720 and 1920x1080 (home also at 800x500, 1366x768, 1000x900, 3840x2160): no horizontal scroll and nothing off the right edge; a graph walk of arrow-key moves reached every control on home and Settings; `pnpm check` passes (122 tests). Not verified: a real webcam, real families or children reading the wording, a gamepad, a real TV, and the Windows app.
+
 ## Next
 
 Carried over (pose estimation has already been moved into a worker):

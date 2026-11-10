@@ -2,48 +2,40 @@ import { loadSettings, PlayerJoin, RateMeter, saveSettings, type KeypointName, t
 import { GameRuntime, PLAYER_COLORS, renderToCanvas, WebAudioPlayer } from "@playloom/runtime";
 import { PACKAGE_LIMITS, packageFileName, unpackGame, type GameDefinition } from "@playloom/sdk";
 import { bundledGames, exportGame, installedGames, installGame, loadImages, removeGame, type LibraryEntry } from "./library";
-import { focusFirst, setNavigation, startNavigation } from "./nav";
+import { focusables, focusFirst, setNavigation, startNavigation } from "./nav";
 import { clearTrial, loadCheck, loadTrial, MODE_LABELS, Tracking, type StoredCheck, type TrackingMode } from "./tracking";
-
-// ---- Small DOM helpers ----------------------------------------------------------------------------
-
-type Child = Node | string | null | false | undefined;
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
-  for (const [key, value] of Object.entries(props)) {
-    if (value === undefined || value === false) continue;
-    if (key === "class") el.className = String(value);
-    else if (key === "onclick") el.addEventListener("click", value as EventListener);
-    else if (key === "style") el.setAttribute("style", String(value));
-    else if (key.startsWith("data-")) el.setAttribute(key, value === true ? "" : String(value));
-    else (el as unknown as Record<string, unknown>)[key] = value;
-  }
-  for (const child of children) if (child) el.append(child);
-  return el;
-}
-const button = (label: Child, onclick: () => void, cls = "", extra: Record<string, unknown> = {}): HTMLButtonElement =>
-  h("button", { class: cls, onclick, type: "button", ...extra }, label);
+import { button, h, icon, logo, type Child, type IconName } from "./ui";
 
 const stage = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = stage.getContext("2d")!;
 const screenEl = document.getElementById("screen")!;
 const overlayEl = document.getElementById("overlay")!;
-const toastEl = document.getElementById("toast")!;
 const fileInput = document.getElementById("package-file") as HTMLInputElement;
 
 // ---- App state ------------------------------------------------------------------------------------
 
+type Backdrop = "off" | "faint" | "strong";
 interface Prefs {
   volume: number;
   welcomed: boolean;
+  /**
+   * How much of the camera picture shows behind a game. Off by default: the hand cursors are large and
+   * clear on their own, a picture of yourself behind the targets competes with them, and it costs the
+   * computer extra work on every frame.
+   */
+  backdrop: Backdrop;
 }
 const PREFS_KEY = "playloom.console";
 function loadPrefs(): Prefs {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<Prefs>;
-    return { volume: typeof p.volume === "number" && p.volume >= 0 && p.volume <= 1 ? p.volume : 0.8, welcomed: p.welcomed === true };
+    return {
+      volume: typeof p.volume === "number" && p.volume >= 0 && p.volume <= 1 ? p.volume : 0.8,
+      welcomed: p.welcomed === true,
+      backdrop: p.backdrop === "faint" || p.backdrop === "strong" ? p.backdrop : "off",
+    };
   } catch {
-    return { volume: 0.8, welcomed: false };
+    return { volume: 0.8, welcomed: false, backdrop: "off" };
   }
 }
 const prefs = loadPrefs();
@@ -78,33 +70,37 @@ let playing: { entry: LibraryEntry; runtime: GameRuntime; images: Map<string, HT
 let playOverlay = "";
 let setupRun = 0;
 
-// ---- Toasts and dialogs ---------------------------------------------------------------------------
-
-let toastTimer = 0;
-function toast(message: string): void {
-  toastEl.textContent = message;
-  toastEl.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (toastEl.hidden = true), 4000);
-}
+// ---- Dialogs ----------------------------------------------------------------------------------------
+// Nothing in the Console disappears by itself. Anything that needs to be said is either written into the
+// screen where it matters, or shown in a dialog that stays until someone presses a button.
 
 interface DialogButton {
   id: string;
   label: string;
   cls?: string;
+  icon?: IconName;
 }
 let dialogCancel: (() => void) | null = null;
+let returnFocus: HTMLElement | null = null;
 
 function showOverlay(content: HTMLElement, cancel: (() => void) | null): void {
+  if (overlayEl.hidden) returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   overlayEl.replaceChildren(content);
   overlayEl.hidden = false;
+  // Nothing behind a dialog can be reached with Tab, a remote or the pointer.
+  (screenEl as HTMLElement & { inert: boolean }).inert = true;
   dialogCancel = cancel;
   focusFirst();
 }
 function hideOverlay(): void {
   overlayEl.hidden = true;
   overlayEl.replaceChildren();
+  (screenEl as HTMLElement & { inert: boolean }).inert = false;
   dialogCancel = null;
+  const back = returnFocus;
+  returnFocus = null;
+  if (back?.isConnected && focusables().includes(back)) back.focus();
+  else focusFirst();
 }
 
 /** Ask a question. Resolves with the id of the chosen button; going back chooses `cancel`. */
@@ -113,13 +109,77 @@ function ask(title: string, body: Child[], buttons: DialogButton[], cancel: stri
     const done = (id: string): void => {
       hideOverlay();
       resolve(id);
-      focusFirst();
     };
     showOverlay(
-      h("div", { class: "dialog", role: "dialog" }, h("h1", {}, title), ...body, h("div", { class: "row" }, ...buttons.map((b, i) => button(b.label, () => done(b.id), b.cls ?? "", { "data-first": i === 0 })))),
+      h(
+        "div",
+        { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": title },
+        h("h1", {}, title),
+        h("div", { class: "body" }, ...body),
+        h("div", { class: "row" }, ...buttons.map((b, i) => button([b.icon ? icon(b.icon) : null, b.label], () => done(b.id), b.cls ?? "", { "data-first": i === 0 }))),
+      ),
       () => done(cancel),
     );
   });
+}
+
+/** Say something and wait for OK. */
+const tell = (title: string, body: Child[] | string): Promise<string> =>
+  ask(title, typeof body === "string" ? [h("p", {}, body)] : body, [{ id: "ok", label: "OK", cls: "go" }], "ok");
+
+/** Pick one of several. Resolves with the chosen id, or null if the person goes back. */
+function choose(title: string, items: Array<{ id: string; label: string; hint?: string }>, current: string, hint?: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const done = (id: string | null): void => {
+      hideOverlay();
+      resolve(id);
+    };
+    showOverlay(
+      h(
+        "div",
+        { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": title },
+        h("h1", {}, title),
+        h(
+          "div",
+          { class: "body" },
+          hint ? h("p", {}, hint) : null,
+          h(
+            "div",
+            { class: "choices", role: "radiogroup" },
+            ...items.map((item) =>
+              button(
+                [item.id === current ? icon("check") : h("span", { class: "tick" }), h("span", {}, item.label, item.hint ? h("small", {}, item.hint) : null)],
+                () => done(item.id),
+                "",
+                { role: "radio", "aria-checked": String(item.id === current), "data-first": item.id === current },
+              ),
+            ),
+          ),
+        ),
+        h("div", { class: "row" }, button([icon("back"), "Back"], () => done(null), "quiet")),
+      ),
+      () => done(null),
+    );
+  });
+}
+
+/** A progress dialog for a job the computer is doing. It closes itself when the job is finished. */
+function showProgress(title: string): { set(step: string, fraction: number, note?: string): void; close(): void } {
+  const stepEl = h("p", { class: "step" });
+  const fill = h("i");
+  const noteEl = h("p", {});
+  showOverlay(
+    h("div", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": title }, h("h1", {}, title), h("div", { class: "body" }, stepEl, h("div", { class: "meter" }, fill), noteEl)),
+    null,
+  );
+  return {
+    set(step, fraction, note = "") {
+      stepEl.textContent = step;
+      fill.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
+      noteEl.textContent = note;
+    },
+    close: hideOverlay,
+  };
 }
 
 // ---- Navigation -----------------------------------------------------------------------------------
@@ -153,12 +213,59 @@ function show(next: Screen): void {
   }
   screen = next;
   document.body.classList.toggle("show-stage", next === "setup" || next === "play");
+  screenEl.scrollTop = 0;
   if (next === "home") renderHome();
   else if (next === "settings") renderSettings();
   else if (next === "setup") renderSetup();
-  else screenEl.replaceChildren(h("div", { class: "corner" }, "Esc or Back: pause"));
+  else {
+    screenEl.replaceChildren(
+      h(
+        "div",
+        { class: "playbar" },
+        h("span", { class: "hint" }, "Esc or B to pause"),
+        button([icon("pause"), "Pause"], togglePause, "", { "data-key": "pause" }),
+      ),
+    );
+    // No focus ring over the game until someone asks for one with an arrow key.
+    return;
+  }
   focusFirst();
 }
+
+// ---- Shared pieces --------------------------------------------------------------------------------
+
+function statusChips(): HTMLElement {
+  return h(
+    "div",
+    { class: "chips" },
+    h("span", { class: "chip js-mode" }),
+    h("span", { class: "chip p1 js-p1" }, h("i"), "Player 1"),
+    h("span", { class: "chip p2 js-p2" }, h("i"), "Player 2"),
+  );
+}
+
+/** The header every screen has: a way back (or the name, on the home screen), a title, and who the camera sees. */
+function header(title: string | null, options: { back?: boolean; over?: boolean } = {}): HTMLElement {
+  return h(
+    "header",
+    { class: `bar${options.over ? " over" : ""}` },
+    options.back ? button([icon("back"), "Back"], () => show("home"), "quiet", { "data-key": "back", "aria-label": "Back to the games" }) : null,
+    title ? h("h1", {}, title) : h("div", { class: "brand" }, logo(), h("b", {}, "Play", h("span", {}, "loom"))),
+    !title ? h("div", { class: "tagline" }, "Play together. Create anything.") : null,
+    h("div", { class: "spacer" }),
+    statusChips(),
+  );
+}
+
+const legend = (): HTMLElement =>
+  h(
+    "div",
+    { class: "legend" },
+    h("span", {}, h("kbd", {}, "Arrows"), "or D-pad to move"),
+    h("span", {}, h("kbd", {}, "Enter"), "or A to choose"),
+    h("span", {}, h("kbd", {}, "Esc"), "or B to go back"),
+    h("span", {}, "Mouse works too"),
+  );
 
 // ---- Home -----------------------------------------------------------------------------------------
 
@@ -177,6 +284,7 @@ function gameTile(entry: LibraryEntry, index: number): HTMLButtonElement {
   const art = h("div", { class: "art", style: `background-color:${TILE_COLORS[index % TILE_COLORS.length]}` });
   if (typeof picture === "string") art.style.backgroundImage = `url("${picture}")`;
   else art.append(h("b", {}, game.meta.name.slice(0, 1).toUpperCase()));
+  art.append(h("span", { class: "go-badge" }, icon("play")));
   const warning = canPlay(game);
   const players = game.requires.players;
   return button(
@@ -199,69 +307,106 @@ function gameTile(entry: LibraryEntry, index: number): HTMLButtonElement {
     ),
     () => void chooseGame(entry),
     "tile",
-    { "data-first": index === 0 },
+    { "data-first": index === 0, "aria-label": `Play ${game.meta.name}` },
   );
 }
 
-function smallTile(glyph: string, label: string, hint: string, onclick: () => void): HTMLButtonElement {
-  return button(h("span", { style: "display:contents" }, h("span", { class: "glyph" }, glyph), h("span", {}, label, h("small", { class: "note", style: "background:none;padding:0" }, hint))), onclick, "tile small");
+function smallTile(glyph: IconName, label: string, hint: string, onclick: () => void, key: string): HTMLButtonElement {
+  return button(h("span", { style: "display:contents" }, h("span", { class: "glyph" }, icon(glyph)), h("span", { class: "label" }, label, h("small", {}, hint))), onclick, "tile small", { "data-key": key });
 }
 
+let statusSig = "";
+
 function renderHome(): void {
-  const alert =
-    tracking.state === "error"
-      ? h(
-          "div",
-          { class: "alert", role: "alert" },
-          h("p", {}, tracking.error?.camera ? `${tracking.error.message} Check that the camera is plugged in and not being used by another program.` : `Tracking could not start: ${tracking.error?.message ?? "unknown problem"}`),
-          button("Try again", () => void restartTracking()),
-          button("Practise without a camera", () => setMode("practice")),
-        )
-      : null;
+  statusSig = "";
   screenEl.replaceChildren(
+    header(null),
     h(
-      "div",
-      { class: "top" },
-      h("div", { class: "brand" }, "Play", h("span", {}, "loom")),
-      h("div", { class: "tagline" }, "Play together. Create anything."),
-      h("div", { class: "spacer" }),
-      h("span", { class: "chip", id: "mode-chip" }),
-      h("span", { class: "chip p1", id: "chip-1" }, h("i"), "Player 1"),
-      h("span", { class: "chip p2", id: "chip-2" }, h("i"), "Player 2"),
+      "main",
+      { class: "page" },
+      h("div", { id: "status" }),
+      h("h2", {}, "Games"),
+      h("div", { class: "tiles" }, ...library.map(gameTile)),
+      h("h2", {}, "More"),
+      h(
+        "div",
+        { class: "tiles" },
+        smallTile("players", "Player setup", "Get ready to play together", () => openSetup(null), "setup"),
+        smallTile("plus", "Add a game", "Open a .playloom file", () => fileInput.click(), "add"),
+        smallTile("sliders", "Settings", "For grown-ups", () => show("settings"), "settings"),
+        /Electron/.test(navigator.userAgent) ? smallTile("power", "Close Playloom", "Quit the app", () => window.close(), "close") : null,
+      ),
+      h("p", { class: "privacy" }, "Your camera picture stays on this device. Playloom has no accounts, no adverts and no internet connection."),
     ),
-    ...(alert ? [alert] : []),
-    h("h2", {}, "Games"),
-    h("div", { class: "tiles" }, ...library.map(gameTile)),
-    h("h2", {}, "More"),
-    h(
-      "div",
-      { class: "tiles" },
-      smallTile("P", "Player setup", "Stand side by side and get recognised", () => openSetup(null)),
-      smallTile("+", "Add a game", "Install a .playloom file", () => fileInput.click()),
-      smallTile("⚙", "Settings", "For grown-ups", () => show("settings")),
-    ),
-    h("div", { class: "foot" }, "Your camera picture stays on this device. Playloom has no accounts, no adverts and no internet connection."),
+    legend(),
   );
   updateChips();
 }
 
+/** Keep the camera chips, and the status card at the top of Home, in step with what the engine is doing. */
 function updateChips(): void {
-  for (const id of [1, 2]) document.getElementById(`chip-${id}`)?.classList.toggle("on", !!api.players.get(id)?.present);
-  const chip = document.getElementById("mode-chip");
+  for (const id of [1, 2]) screenEl.querySelector(`.js-p${id}`)?.classList.toggle("on", !!api.players.get(id)?.present);
+  const chip = screenEl.querySelector(".js-mode");
   if (chip) {
-    chip.textContent =
-      tracking.state === "starting" ? "Starting camera…" : tracking.state === "tuning" ? "Finding the best tracking…" : tracking.state === "error" ? "No tracking" : tracking.practice ? "Practice mode" : api.status.capabilities?.skeleton ? "Camera on" : "Camera on · Lite";
+    const text =
+      tracking.state === "starting" ? "Starting camera…" : tracking.state === "tuning" ? "Getting ready…" : tracking.state === "error" ? "No camera" : tracking.practice ? "Practice mode" : api.status.capabilities?.skeleton ? "Camera on" : "Camera on · Lite";
+    if (chip.textContent !== text) chip.replaceChildren(icon("camera"), text);
+  }
+  if (screen === "home") syncStatus();
+}
+
+function syncStatus(): void {
+  const box = document.getElementById("status");
+  if (!box) return;
+  const sig = `${tracking.state}|${tracking.error?.message ?? ""}|${tracking.trialProgress?.step ?? 0}`;
+  if (sig !== statusSig) {
+    statusSig = sig;
+    let content: HTMLElement | null = null;
+    if (tracking.state === "error") {
+      content = h(
+        "div",
+        { class: "status problem", role: "alert" },
+        h(
+          "div",
+          { class: "text" },
+          h("strong", {}, tracking.error?.camera ? "Playloom cannot see a camera" : "Playloom could not start"),
+          h("p", {}, tracking.error?.camera ? "Check that the camera is plugged in and that no other program is using it. No camera? You can still try the games with the keyboard." : `Something went wrong: ${tracking.error?.message ?? "unknown problem"}`),
+        ),
+        h("div", { class: "row" }, button([icon("refresh"), "Try the camera again"], () => void restartTracking(), "go", { "data-key": "retry" }), button("Practise without a camera", () => setMode("practice"), "", { "data-key": "practice" })),
+      );
+    } else if (tracking.state === "tuning") {
+      content = h(
+        "div",
+        { class: "status", role: "status" },
+        h("strong", {}, "Getting your camera ready"),
+        h("p", { id: "tuning-step" }),
+        h("div", { class: "meter" }, h("i", { id: "tuning-fill" })),
+        h("p", {}, "This only happens once. The games are ready as soon as it finishes."),
+      );
+    } else if (tracking.state === "starting" || tracking.state === "idle") {
+      content = h("div", { class: "status", role: "status" }, h("strong", {}, "Starting the camera…"), h("div", { class: "meter busy" }, h("i")));
+    }
+    const hadFocus = box.contains(document.activeElement);
+    box.replaceChildren(...(content ? [content] : []));
+    if (hadFocus || document.activeElement === document.body || !document.activeElement) focusFirst();
+  }
+  if (tracking.state === "tuning") {
+    const t = tracking.trialProgress;
+    const step = document.getElementById("tuning-step");
+    if (step && t) step.textContent = `Test ${t.step} of ${t.of}: ${t.label}`;
+    const fill = document.getElementById("tuning-fill");
+    if (fill) fill.style.width = `${Math.round(tracking.trialFraction() * 100)}%`;
   }
 }
 
 async function chooseGame(entry: LibraryEntry): Promise<void> {
   if (tracking.state !== "running") {
     const answer = await ask(
-      "The camera is not ready",
-      [h("p", {}, tracking.state === "tuning" ? "Playloom is finding the best tracking for this computer. It takes about ten seconds, and only happens once. Please try again in a moment." : tracking.state === "starting" ? "Give it a moment and try again." : "Playloom cannot see anyone yet. You can try the camera again, or practise with the keyboard.")],
-      tracking.state === "tuning"
+      "The camera is not ready yet",
+      [h("p", {}, tracking.state === "tuning" ? "Playloom is still getting the camera ready. Watch the progress on the home screen, then pick a game." : tracking.state === "starting" ? "The camera is starting up. Try again in a moment." : "Playloom cannot see anyone yet. You can try the camera again, or play with the keyboard instead.")],
+      tracking.state === "tuning" || tracking.state === "starting"
         ? [{ id: "no", label: "OK", cls: "go" }]
-        : [{ id: "retry", label: "Try the camera again", cls: "go" }, { id: "practice", label: "Practise without a camera" }, { id: "no", label: "Back", cls: "quiet" }],
+        : [{ id: "retry", label: "Try the camera again", cls: "go", icon: "refresh" }, { id: "practice", label: "Practise without a camera" }, { id: "no", label: "Back", cls: "quiet", icon: "back" }],
       "no",
     );
     if (answer === "retry") await restartTracking();
@@ -272,7 +417,7 @@ async function chooseGame(entry: LibraryEntry): Promise<void> {
   if (warning) {
     const answer = await ask(
       "This game may not work here",
-      [h("p", {}, `${entry.game.meta.name} needs full body tracking, and this device is using Lite tracking, which only follows movement. Jumps, ducks and leans will not be noticed.`)],
+      [h("p", {}, `${entry.game.meta.name} needs full body tracking, but this computer is only following movement. Jumps, ducks and leans will not be noticed.`)],
       [{ id: "no", label: "Choose another game", cls: "go" }, { id: "yes", label: "Play anyway" }],
       "no",
     );
@@ -294,11 +439,9 @@ function launch(entry: LibraryEntry): void {
 
 function openSetup(then: LibraryEntry | null): void {
   if (tracking.state !== "running" || tracking.practice || !api.status.capabilities?.skeleton) {
-    void ask(
+    void tell(
       "Player setup is not needed",
-      [h("p", {}, tracking.practice ? "In practice mode the players are pretend, so there is nobody to recognise." : tracking.state !== "running" ? "The camera is not running yet." : "Lite tracking tells players apart by side: Player 1 stands on the left, Player 2 on the right.")],
-      [{ id: "ok", label: "OK", cls: "go" }],
-      "ok",
+      tracking.practice ? "In practice mode the players are pretend, so there is nobody to set up." : tracking.state !== "running" ? "The camera is not running yet." : "This computer tells players apart by side. Player 1 stands on the left, Player 2 on the right.",
     ).then(() => then && tracking.state === "running" && launch(then));
     return;
   }
@@ -313,9 +456,9 @@ function renderSetup(): void {
   const run = ++setupRun;
   const join = new PlayerJoin(api);
   setupJoin = join;
-  const title = h("h1", {}, "Player setup");
-  const text = h("p", {}, "Stand in your half of the picture and raise a hand to join.");
-  const slotEls = [1, 2].map((n) => h("span", { class: `chip p${n} slot`, "aria-live": "polite" }, h("i"), ""));
+  const lead = h("p", { class: "lead" });
+  const notice = h("p", { class: "notice", role: "status" });
+  const cardEls = [1, 2].map((n) => h("div", { class: `pcard p${n}` }));
   const actions = h("div", { class: "row" });
   const finish = (): void => {
     const next = pendingGame;
@@ -328,7 +471,7 @@ function renderSetup(): void {
     try {
       tracking.engine.calibrateNow({ ids: join.joinedIds });
     } catch {
-      toast("I lost sight of someone. Raise a hand again to rejoin.");
+      notice.textContent = "I lost sight of someone. Raise a hand again to rejoin.";
       return;
     }
     calibrated = true;
@@ -338,35 +481,54 @@ function renderSetup(): void {
   let signature = "";
   const refresh = (): void => {
     if (run !== setupRun) return;
-    const [a, b] = join.slots;
     const sig = JSON.stringify(join.slots);
     if (sig === signature) return;
     signature = sig;
-    [a, b].forEach((s, i) => {
-      const name = `Player ${i + 1}`;
-      slotEls[i]!.classList.toggle("on", s.joined);
-      slotEls[i]!.lastChild!.textContent = s.joined ? `✓ ${name} is in!` : s.detected ? `${name} — raise a hand to join` : `${name} — step into the ${i === 0 ? "left" : "right"} half`;
-    });
+    const focused = (document.activeElement as HTMLElement | null)?.dataset.key;
     const count = join.joinedCount;
-    text.textContent =
-      count === 2
-        ? "Both of you are in. Press Start, or both raise both hands."
-        : count === 1
-          ? "Waiting for the other player. They raise a hand to join."
-          : "Stand in your half of the picture and raise a hand to join.";
-    const buttons: Node[] = [];
-    if (count === 2) buttons.push(button("Start", start, "go", { "data-first": true }));
-    else if (count === 1) buttons.push(button("Start with one player", start, "go"));
-    [a, b].forEach((s, i) => {
-      if (!s.joined) buttons.push(button(`Player ${i + 1} is ready`, () => (join.confirm((i + 1) as 1 | 2) ? refresh() : toast(`I cannot see anyone in the ${i === 0 ? "left" : "right"} half yet.`)), "quiet"));
+    join.slots.forEach((s, i) => {
+      const n = (i + 1) as 1 | 2;
+      const side = i === 0 ? "left" : "right";
+      cardEls[i]!.classList.toggle("in", s.joined);
+      cardEls[i]!.replaceChildren(
+        h(
+          "div",
+          { class: "info" },
+          h("div", { class: "who" }, h("i"), `Player ${n}`),
+          h("div", { class: "state" }, s.joined ? "You are in!" : s.detected ? "I can see you. Raise a hand to join." : `Step into the ${side} half.`),
+        ),
+        s.joined
+          ? h("div", { class: "ready" }, icon("check"), "Ready")
+          : button(`Join as Player ${n}`, () => {
+              if (join.confirm(n)) {
+                notice.textContent = "";
+                refresh();
+              } else notice.textContent = `I cannot see anyone in the ${side} half yet. Step into the picture first.`;
+            }, "quiet", { "data-key": `join${n}`, "data-first": n === 1 }),
+      );
     });
-    buttons.push(button(pendingGame ? "Skip" : "Back", () => (pendingGame ? finish() : show("home")), "quiet", count === 0 ? { "data-first": true } : {}));
+    lead.textContent =
+      count === 2
+        ? "You are both in! Press Start, or both raise both hands."
+        : count === 1
+          ? "One player is in. Waiting for the other to raise a hand, or start with just one."
+          : "Stand on your own side of the picture, then raise a hand to join.";
+    const buttons: Node[] = [];
+    if (pendingGame) buttons.push(button("Skip setup", finish, "quiet", { "data-key": "skip" }));
+    if (count === 2) buttons.push(button([icon("play"), "Start"], start, "go big", { "data-key": "start", "data-first": true }));
+    else if (count === 1) buttons.push(button([icon("play"), "Start with one player"], start, "go", { "data-key": "start" }));
     actions.replaceChildren(...buttons);
-    focusFirst();
+    actions.hidden = buttons.length === 0;
+    const again = focused && screenEl.querySelector<HTMLElement>(`[data-key="${focused}"]`);
+    if (again) again.focus();
+    else focusFirst();
   };
   join.on((e) => {
     if (run !== setupRun) return;
-    if (e.type === "joined") audio.play("ding");
+    if (e.type === "joined") {
+      notice.textContent = "";
+      audio.play("ding");
+    }
     if (e.type === "start") start();
   });
   const off = api.events.on("frame", () => {
@@ -376,14 +538,31 @@ function renderSetup(): void {
   });
   signature = "";
   join.update();
+  screenEl.replaceChildren(
+    header("Player setup", { back: true, over: true }),
+    h("div", { class: "panel" }, h("h2", {}, "Who is playing?"), lead, h("div", { class: "cards" }, ...cardEls), notice, actions),
+  );
   refresh();
-  screenEl.replaceChildren(h("div", { class: "hud" }, title, h("div", { class: "row" }, ...slotEls), text, actions));
+  updateChips();
 }
 
 const BONES: Array<[KeypointName, KeypointName]> = [
   ["leftShoulder", "rightShoulder"], ["leftShoulder", "leftElbow"], ["leftElbow", "leftWrist"], ["rightShoulder", "rightElbow"],
   ["rightElbow", "rightWrist"], ["leftShoulder", "leftHip"], ["rightShoulder", "rightHip"], ["leftHip", "rightHip"],
 ];
+
+/** Keep the drawing surface the size of the window, so the picture is never stretched. */
+function fitStage(): void {
+  const dpr = window.devicePixelRatio || 1;
+  const cw = window.innerWidth;
+  const ch = window.innerHeight;
+  // Never ask a modest computer to paint a 4K canvas every frame: cap at about full-HD worth of pixels.
+  const scale = Math.min(dpr, Math.sqrt(2_100_000 / Math.max(1, cw * ch)));
+  const w = Math.max(320, Math.round(cw * scale));
+  const hh = Math.max(180, Math.round(ch * scale));
+  if (stage.width !== w) stage.width = w;
+  if (stage.height !== hh) stage.height = hh;
+}
 
 /** The setup picture: the camera as a mirror, with each recognised player outlined in their colour. */
 function drawSetup(): void {
@@ -392,78 +571,104 @@ function drawSetup(): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#0b0e1c";
   ctx.fillRect(0, 0, W, H);
+  // The camera picture keeps its own proportions and sits in the middle; everything below is drawn in
+  // the same rectangle so outlines land exactly on the people.
   const video = tracking.video();
+  const aspect = video && video.videoWidth > 0 ? video.videoWidth / video.videoHeight : 4 / 3;
+  let vw = Math.min(W, H * aspect);
+  let vh = vw / aspect;
+  if (vh > H) {
+    vh = H;
+    vw = vh * aspect;
+  }
+  const vx = (W - vw) / 2;
+  const vy = (H - vh) / 2;
+  const u = vh / 720;
   if (video && video.readyState >= 2) {
     ctx.save();
     if (settings.mirror) {
-      ctx.translate(W, 0);
+      ctx.translate(vx + vw, vy);
       ctx.scale(-1, 1);
-    }
-    ctx.drawImage(video, 0, 0, W, H);
+      ctx.drawImage(video, 0, 0, vw, vh);
+    } else ctx.drawImage(video, vx, vy, vw, vh);
     ctx.restore();
   }
   // Two big slots: Player 1 on the left half, Player 2 on the right.
   const slots = setupJoin?.slots;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "bold 44px system-ui, sans-serif";
   [1, 2].forEach((n, i) => {
     const color = PLAYER_COLORS[n] ?? "#fff";
     const joined = !!slots?.[i]?.joined;
-    ctx.globalAlpha = joined ? 0.28 : 0.1;
+    ctx.globalAlpha = joined ? 0.3 : 0.12;
     ctx.fillStyle = color;
-    ctx.fillRect((i * W) / 2, 0, W / 2, H);
+    ctx.fillRect(vx + (i * vw) / 2, vy, vw / 2, vh);
+    ctx.globalAlpha = joined ? 0.9 : 0.5;
+    ctx.font = `800 ${220 * u}px system-ui, "Segoe UI", sans-serif`;
+    ctx.lineWidth = 10 * u;
+    ctx.strokeStyle = "rgba(8,10,28,0.7)";
+    const cx = vx + ((i + 0.5) * vw) / 2;
+    const cy = vy + vh * 0.38;
+    const mark = joined ? "✓" : String(n);
+    ctx.strokeText(mark, cx, cy);
+    ctx.fillStyle = color;
+    ctx.fillText(mark, cx, cy);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = color;
-    ctx.fillText(joined ? `✓ Player ${n} is in!` : `Player ${n}`, ((i + 0.5) * W) / 2, 52);
   });
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.setLineDash([14, 16]);
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.setLineDash([14 * u, 16 * u]);
+  ctx.lineWidth = 3 * u;
   ctx.beginPath();
-  ctx.moveTo(W / 2, 0);
-  ctx.lineTo(W / 2, H);
+  ctx.moveTo(vx + vw / 2, vy);
+  ctx.lineTo(vx + vw / 2, vy + vh);
   ctx.stroke();
   ctx.setLineDash([]);
   // Before anyone has joined, outline people by the half they stand in rather than by a provisional number.
-  for (const p of api.players.all()) if (p.present) drawPlayer(p, W, H, (p.bodyPosition?.x ?? 0) < 0.5 ? 1 : 2);
+  for (const p of api.players.all()) if (p.present) drawPlayer(p, vx, vy, vw, vh, u, (p.bodyPosition?.x ?? 0) < 0.5 ? 1 : 2);
 }
 
-function drawPlayer(p: PlayerState, W: number, H: number, id: number = p.id): void {
+function drawPlayer(p: PlayerState, vx: number, vy: number, vw: number, vh: number, u: number, id: number = p.id): void {
   const color = PLAYER_COLORS[id] ?? "#fff";
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 8;
+  const X = (x: number): number => vx + x * vw;
+  const Y = (y: number): number => vy + y * vh;
   ctx.lineCap = "round";
-  for (const [a, b] of BONES) {
-    const ka = p.skeleton?.[a];
-    const kb = p.skeleton?.[b];
-    if (!ka || !kb) continue;
-    ctx.beginPath();
-    ctx.moveTo(ka.x * W, ka.y * H);
-    ctx.lineTo(kb.x * W, kb.y * H);
-    ctx.stroke();
+  for (const pass of [0, 1]) {
+    ctx.strokeStyle = pass === 0 ? "rgba(8,10,28,0.8)" : color;
+    ctx.lineWidth = (pass === 0 ? 14 : 8) * u;
+    for (const [a, b] of BONES) {
+      const ka = p.skeleton?.[a];
+      const kb = p.skeleton?.[b];
+      if (!ka || !kb) continue;
+      ctx.beginPath();
+      ctx.moveTo(X(ka.x), Y(ka.y));
+      ctx.lineTo(X(kb.x), Y(kb.y));
+      ctx.stroke();
+    }
   }
   for (const hand of [p.leftHand, p.rightHand]) {
     if (!hand) continue;
     ctx.beginPath();
-    ctx.arc(hand.x * W, hand.y * H, 22, 0, Math.PI * 2);
+    ctx.arc(X(hand.x), Y(hand.y), 24 * u, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
+    ctx.lineWidth = 5 * u;
+    ctx.strokeStyle = "#fff";
+    ctx.stroke();
   }
   if (p.bodyPosition) {
     const label = `Player ${id}`;
-    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.font = `800 ${34 * u}px system-ui, "Segoe UI", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const w = ctx.measureText(label).width + 36;
-    const x = p.bodyPosition.x * W;
-    const y = Math.max(40, p.bodyPosition.y * H - 170);
+    const w = ctx.measureText(label).width + 36 * u;
+    const x = X(p.bodyPosition.x);
+    const y = Math.max(vy + 80 * u, Y(p.bodyPosition.y) - 170 * u);
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.roundRect(x - w / 2, y - 26, w, 52, 26);
+    ctx.roundRect(x - w / 2, y - 26 * u, w, 52 * u, 26 * u);
     ctx.fill();
     ctx.fillStyle = "#10131c";
-    ctx.fillText(label, x, y + 2);
+    ctx.fillText(label, x, y + 2 * u);
   }
 }
 
@@ -483,30 +688,31 @@ function syncPlayOverlay(): void {
   if (!key) return hideOverlay();
 
   const row = (...buttons: HTMLButtonElement[]): HTMLElement => h("div", { class: "row" }, ...buttons);
-  const quit = button("Choose another game", quitGame, "quiet");
+  const quit = (): HTMLButtonElement => button([icon("home"), "Choose another game"], quitGame, "quiet", { "data-key": "quit" });
+  const dialog = (...children: Child[]): HTMLElement => h("div", { class: "dialog", role: "dialog", "aria-modal": "true" }, ...children);
   let content: HTMLElement;
   if (key === "ended") {
     const r = runtime.result!;
-    const title = r.kind === "winner" ? `Player ${r.player} wins!` : r.kind === "tie" ? "It's a tie!" : r.won ? "You did it together!" : "Out of time — so close!";
-    content = h(
-      "div",
-      { class: "dialog", role: "dialog" },
+    const title = r.kind === "winner" ? `Player ${r.player} wins!` : r.kind === "tie" ? "It's a tie!" : r.won ? "You did it together!" : "Out of time. So close!";
+    content = dialog(
       h("h1", {}, title),
-      h("div", { class: "scores" }, ...[...runtime.scores].map(([player, score]) => h("span", { class: `s${player}` }, `Player ${player}: ${Math.round(score)}`))),
-      row(button("Play again", () => runtime.start(), "go", { "data-first": true }), quit),
+      h("div", { class: "scores" }, ...[...runtime.scores].map(([player, score]) => h("div", { class: `score s${player}` }, h("small", {}, `Player ${player}`), h("b", {}, String(Math.round(score)))))),
+      row(button([icon("refresh"), "Play again"], () => runtime.start(), "go big", { "data-first": true, "data-key": "again" }), quit()),
     );
   } else if (key === "user") {
-    content = h("div", { class: "dialog", role: "dialog" }, h("h1", {}, "Paused"), h("p", {}, entry.game.meta.name), row(button("Keep playing", () => runtime.resume(), "go", { "data-first": true }), button("Start again", () => runtime.start()), quit));
+    content = dialog(
+      h("h1", {}, "Paused"),
+      h("div", { class: "body" }, h("p", {}, entry.game.meta.name)),
+      row(button([icon("play"), "Keep playing"], () => runtime.resume(), "go big", { "data-first": true, "data-key": "resume" }), button([icon("refresh"), "Start again"], () => runtime.start(), "", { "data-key": "restart" }), quit()),
+    );
   } else if (key === "players") {
     const n = entry.game.requires.players.min;
-    content = h("div", { class: "dialog", role: "dialog" }, h("h1", {}, "Where did you go?"), h("p", {}, `This game needs ${n} player${n === 1 ? "" : "s"} in front of the camera. It will carry on as soon as it can see you.`), row(quit));
+    content = dialog(h("h1", {}, "Where did everyone go?"), h("div", { class: "body" }, h("p", {}, `This game needs ${n} player${n === 1 ? "" : "s"} in front of the camera. It carries on as soon as it can see ${n === 1 ? "you" : "everyone"} again.`)), row(quit()));
   } else {
-    content = h(
-      "div",
-      { class: "dialog", role: "dialog" },
+    content = dialog(
       h("h1", {}, "Who is who?"),
-      h("p", {}, "I lost track of which player is which. Step back to your own side — Player 1 on the left, Player 2 on the right."),
-      row(button("We swapped places on purpose", () => tracking.engine.confirmIdentities(), "", { "data-first": true }), quit),
+      h("div", { class: "body" }, h("p", {}, "I lost track of which player is which. Step back to your own side: Player 1 on the left, Player 2 on the right.")),
+      row(button("We swapped on purpose", () => tracking.engine.confirmIdentities(), "", { "data-first": true, "data-key": "swapped" }), quit()),
     );
   }
   showOverlay(content, key === "user" ? () => runtime.resume() : key === "ended" ? quitGame : null);
@@ -520,20 +726,18 @@ fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
   fileInput.value = "";
   if (!file) return;
-  if (file.size > PACKAGE_LIMITS.packageBytes) return void ask("That file is too big", [h("p", {}, `Playloom games are at most ${megabytes(PACKAGE_LIMITS.packageBytes)}.`)], [{ id: "ok", label: "OK", cls: "go" }], "ok");
+  if (file.size > PACKAGE_LIMITS.packageBytes) return void tell("That file is too big", `Playloom games can be at most ${megabytes(PACKAGE_LIMITS.packageBytes)}.`);
   const result = unpackGame(new Uint8Array(await file.arrayBuffer()));
   if (!result.ok) {
-    const problems = result.issues.slice(0, 4).map((i) => h("p", {}, `${i.path} ${i.message}`));
-    return void ask("This is not a game Playloom can use", [h("p", {}, "The file was checked and nothing was installed."), ...problems], [{ id: "ok", label: "OK", cls: "go" }], "ok");
+    const problems = result.issues.slice(0, 3).map((i) => h("p", { class: "note" }, `${i.path} ${i.message}`));
+    return void tell("That is not a game Playloom can use", [h("p", {}, "Playloom looked inside the file and did not add anything."), ...problems]);
   }
   const { game, assets } = result.package;
   const existing = library.find((e) => e.game.meta.id === game.meta.id);
-  if (existing?.source === "bundled") {
-    return void ask("This game comes with Playloom", [h("p", {}, `${existing.game.meta.name} is built in and cannot be replaced.`)], [{ id: "ok", label: "OK", cls: "go" }], "ok");
-  }
+  if (existing?.source === "bundled") return void tell("This game comes with Playloom", `${existing.game.meta.name} is built in, so it cannot be replaced.`);
   const size = [...assets.values()].reduce((sum, a) => sum + a.length, 0);
   const answer = await ask(
-    existing ? "Replace this game?" : "Install this game?",
+    existing ? "Replace this game?" : "Add this game?",
     [
       h(
         "dl",
@@ -542,21 +746,22 @@ fileInput.addEventListener("change", async () => {
         h("dt", {}, "Made by"), h("dd", {}, game.meta.author ?? "Not stated"),
         h("dt", {}, "Licence"), h("dd", {}, game.meta.license ?? "Not stated"),
         h("dt", {}, "Size"), h("dd", {}, `${megabytes(size + 1)} · ${assets.size} picture${assets.size === 1 ? "" : "s"}`),
-        existing ? h("dt", {}, "Installed") : null, existing ? h("dd", {}, `version ${existing.game.meta.version}`) : null,
+        existing ? h("dt", {}, "Now installed") : null, existing ? h("dd", {}, `version ${existing.game.meta.version}`) : null,
       ),
-      h("p", {}, "Playloom games are made of pictures and rules. They cannot run programs, read your files or use the internet. Still, only install games from people you trust, as you would any game for children."),
+      h("p", {}, "Playloom games are made of pictures and rules. They cannot run programs, read your files or use the internet. Still, only add games from people you trust, as you would any game for children."),
     ],
-    [{ id: "yes", label: existing ? "Replace" : "Install", cls: "go" }, { id: "no", label: "Cancel", cls: "quiet" }],
+    [{ id: "yes", label: existing ? "Replace it" : "Add it", cls: "go" }, { id: "no", label: "Cancel", cls: "quiet" }],
     "no",
   );
   if (answer !== "yes") return;
   try {
     await installGame(result.package);
     await refreshLibrary();
-    toast(`${game.meta.name} is installed.`);
-    show(screen === "settings" ? "settings" : "home");
+    if (screen === "home") renderHome();
+    if (screen === "settings") renderSettings();
+    await tell("Game added", `${game.meta.name} is ready to play.`);
   } catch (err) {
-    void ask("The game could not be saved", [h("p", {}, (err as Error).message)], [{ id: "ok", label: "OK", cls: "go" }], "ok");
+    void tell("The game could not be saved", (err as Error).message);
   }
 });
 
@@ -596,21 +801,26 @@ function setMode(mode: TrackingMode): void {
   void restartTracking();
 }
 
+const PROFILE_NAMES = {
+  enhanced: "Enhanced: smooth full body tracking",
+  standard: "Standard: full body tracking",
+  lite: "Lite: follows movement only, so games that need jumps or leans will not work",
+  unsupported: "Not supported: no working camera tracking was found",
+} as const;
+
 function describeCheck(check: StoredCheck | null): string {
-  if (!check) return "This device has not been checked yet. The check takes about 20 seconds and works best with two people in front of the camera.";
+  if (!check) return "This computer has not been checked yet. The check runs three short tests, one after another. Two people standing in front of the camera gives the best result.";
   const r = check.recommendation;
-  const names = { enhanced: "Enhanced — smooth full body tracking", standard: "Standard — full body tracking", lite: "Lite — movement only; games that need jumps or leans will not work", unsupported: "Not supported — no working camera tracking was found" };
-  const lines = check.report.backends.map((b) => `  ${MODE_LABELS[b.backend as TrackingMode] ?? b.backend}: ${b.error ? `could not start (${b.error})` : `${b.trackingHz.toFixed(0)} updates a second, ${b.latencyMs.toFixed(0)} ms delay`}`);
-  return `Result: ${names[r.profile]}\nPlayers supported: ${r.supportedPlayers}\nChecked ${new Date(check.report.createdAt).toLocaleDateString()}\n${lines.join("\n")}`;
+  return `Result: ${PROFILE_NAMES[r.profile]}.\nPlayers it can follow: ${r.supportedPlayers}.\nChecked on ${new Date(check.report.createdAt).toLocaleDateString()}. The saved report has all the details.`;
 }
 
 let cameraList: Array<{ deviceId: string; label: string }> = [];
 let checking = false;
 
 function nowUsing(): string {
-  if (tracking.state === "tuning") return "Now using: finding the best tracking…";
-  if (tracking.state === "starting") return "Now using: starting…";
-  if (tracking.state !== "running") return `Now using: nothing — ${tracking.error?.message ?? "not started"}`;
+  if (tracking.state === "tuning") return "Getting ready…";
+  if (tracking.state === "starting") return "Starting…";
+  if (tracking.state !== "running") return `Not running. ${tracking.error?.message ?? ""}`.trim();
   const name = MODE_LABELS[tracking.active === "simulator" ? "practice" : (tracking.active as TrackingMode)] ?? tracking.active;
   const hz = api.status.trackingHz;
   return `Now using: ${name}${tracking.practice ? "" : ` · ${hz > 0 ? `${hz.toFixed(0)} updates a second` : "measuring…"}`}`;
@@ -618,111 +828,170 @@ function nowUsing(): string {
 
 function renderSettings(): void {
   const focused = (document.activeElement as HTMLElement | null)?.dataset.key;
-  const option = (key: string, label: string, hint: string, value: string, onclick: () => void): HTMLButtonElement =>
-    button(h("span", { style: "display:contents" }, h("span", {}, label, h("small", {}, hint)), h("span", { class: "value" }, value)), onclick, "option", { "data-key": key });
-  const cycle = <T,>(list: T[], current: T): T => list[(list.indexOf(current) + 1) % list.length]!;
-
+  const scrolled = screenEl.scrollTop;
   const sensitivities: Array<[number, string]> = [[0.7, "Low"], [1, "Normal"], [1.4, "High"], [1.8, "Very high"]];
   const volumes: Array<[number, string]> = [[0, "Off"], [0.35, "Quiet"], [0.8, "Normal"], [1, "Loud"]];
-  const nearest = (list: Array<[number, string]>, v: number): [number, string] => list.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a));
-  const sens = nearest(sensitivities, settings.sensitivity);
-  const vol = nearest(volumes, prefs.volume);
+  const nearest = (list: Array<[number, string]>, v: number): number => list.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a))[0];
   const camera = cameraList.find((c) => c.deviceId === settings.cameraId);
   const modes = Object.keys(MODE_LABELS) as TrackingMode[];
-  const report = h("div", { class: "note", id: "check-note" }, describeCheck(loadCheck()));
 
-  screenEl.replaceChildren(
-    h("div", { class: "top" }, button("‹ Back", () => show("home"), "quiet", { "data-first": true, "data-key": "back" }), h("div", { class: "brand" }, "Settings")),
+  /** A row with a name, a plain-words hint, and something to press on the right. */
+  const row = (label: string, hint: string, control: Node, key?: string): HTMLElement =>
+    h("div", { class: "setting", "data-row": key }, h("div", { class: "label" }, label, h("small", { class: "hint-text" }, hint)), h("div", { class: "control" }, control));
+  /** A short list of choices where the one in use is filled in and ticked. */
+  const seg = <T,>(key: string, label: string, options: Array<[T, string]>, current: T, pick: (value: T) => void): HTMLElement =>
     h(
       "div",
-      { class: "settings" },
-      h("h2", {}, "Camera and tracking"),
-      option("mode", "Tracking", nowUsing(), MODE_LABELS[tracking.mode], () => setMode(cycle(modes, tracking.mode))),
-      option("camera", "Camera", cameraList.length > 1 ? `${cameraList.length} cameras found` : "Choose which camera to use", camera?.label ?? "Default", () => {
-        const ids = [undefined, ...cameraList.map((c) => c.deviceId)];
-        settings.cameraId = cycle(ids, settings.cameraId && ids.includes(settings.cameraId) ? settings.cameraId : undefined);
-        clearTrial(); // a different camera may track at a different speed
-        persist();
-        void restartTracking();
-      }),
-      option("mirror", "Mirror picture", "On: the screen works like a mirror, which most people find natural", settings.mirror ? "On" : "Off", () => {
-        tracking.apply({ mirror: !settings.mirror });
-        calibrated = false;
-        persist();
-        renderSettings();
-      }),
-      option("sens", "Gesture sensitivity", "Higher makes jumps, ducks and swipes easier — useful for small children", sens[1], () => {
-        tracking.apply({ sensitivity: cycle(sensitivities, sens)[0] });
-        persist();
-        renderSettings();
-      }),
-      option("retest", "Re-test tracking speed", "Automatic mode times each kind of tracking for a few seconds and keeps the fastest", loadTrial() ? "Start" : "Not tested", () => {
-        if (tracking.mode !== "auto") return void toast("Set Tracking to Automatic first.");
-        if (loadCheck()) return void toast("A full device check is saved and is used instead. Run Check this device again to refresh it.");
-        clearTrial();
-        void restartTracking();
-      }),
-      option("check", "Check this device", "Measures how well this computer and camera can track two players", checking ? "Checking…" : "Start", () => void runCheck()),
-      report,
-      loadCheck() ? button("Save the report as a file", () => download("playloom-compatibility.json", JSON.stringify(loadCheck(), null, 2), "application/json"), "quiet", { "data-key": "save-report" }) : null,
-
-      h("h2", {}, "Sound and screen"),
-      option("volume", "Sound", "Game sound effects", vol[1], () => {
-        prefs.volume = audio.volume = cycle(volumes, vol)[0];
-        savePrefs();
-        audio.play("pop");
-        renderSettings();
-      }),
-      option("fullscreen", "Full screen", "Hide everything except Playloom", document.fullscreenElement ? "On" : "Off", () => {
-        const change = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
-        void change.catch(() => toast("Full screen is not available here.")).then(() => renderSettings());
-      }),
-
-      h("h2", {}, "Games"),
-      button("Add a game from a .playloom file", () => fileInput.click(), "", { "data-key": "add" }),
-      ...library.map((entry) =>
-        h(
-          "div",
-          { class: "game-row" },
-          h("span", {}, entry.game.meta.name, " ", h("small", {}, `${entry.game.meta.version} · ${entry.source === "bundled" ? "comes with Playloom" : megabytes(entry.bytes + 1)}`)),
-          button("Save a copy", async () => download(packageFileName(entry.game), await exportGame(entry), "application/zip"), "quiet", { "data-key": `export-${entry.game.meta.id}` }),
-          entry.source === "installed"
-            ? button("Remove", async () => {
-                const answer = await ask(`Remove ${entry.game.meta.name}?`, [h("p", {}, "The game will be deleted from this device.")], [{ id: "no", label: "Keep it", cls: "go" }, { id: "yes", label: "Remove" }], "no");
-                if (answer !== "yes") return;
-                await removeGame(entry.game.meta.id);
-                await refreshLibrary();
-                renderSettings();
-                focusFirst();
-              }, "quiet", { "data-key": `remove-${entry.game.meta.id}` })
-            : null,
-        ),
+      { class: "seg", role: "radiogroup", "aria-label": label },
+      ...options.map(([value, text], i) =>
+        button([value === current ? icon("check") : null, text], () => pick(value), "", { role: "radio", "aria-checked": String(value === current), "data-key": `${key}-${i}` }),
       ),
+    );
+  const onOff = (key: string, label: string, current: boolean, pick: (value: boolean) => void): HTMLElement =>
+    seg<boolean>(key, label, [[true, "On"], [false, "Off"]], current, pick);
 
-      // The desktop application runs full screen with no window frame, so it needs its own way out.
-      /Electron/.test(navigator.userAgent) ? button("Close Playloom", () => window.close(), "", { "data-key": "close" }) : null,
-
-      h("h2", {}, "About"),
-      h("div", { class: "note" }, "Playloom is free, open-source software (GNU GPL version 3 or later).\nThe camera picture is analysed on this device and never stored or sent anywhere. Playloom makes no network connections.\nPose tracking uses MediaPipe (Apache License 2.0)."),
+  const report = h("div", { class: "note", id: "check-note" }, describeCheck(loadCheck()));
+  const gameRows = library.map((entry) =>
+    h(
+      "div",
+      { class: "game-row" },
+      h("div", { class: "label" }, entry.game.meta.name, h("small", {}, `Version ${entry.game.meta.version} · ${entry.source === "bundled" ? "comes with Playloom" : megabytes(entry.bytes + 1)}`)),
+      button([icon("download"), "Save a copy"], async () => download(packageFileName(entry.game), await exportGame(entry), "application/zip"), "quiet", { "data-key": `export-${entry.game.meta.id}` }),
+      entry.source === "installed"
+        ? button([icon("trash"), "Remove"], async () => {
+            const answer = await ask(`Remove ${entry.game.meta.name}?`, [h("p", {}, "The game will be deleted from this computer. You can add it again from its file.")], [{ id: "no", label: "Keep it", cls: "go" }, { id: "yes", label: "Remove it", cls: "danger" }], "no");
+            if (answer !== "yes") return;
+            await removeGame(entry.game.meta.id);
+            await refreshLibrary();
+            renderSettings();
+            focusFirst();
+          }, "quiet danger", { "data-key": `remove-${entry.game.meta.id}` })
+        : null,
     ),
   );
+
+  screenEl.replaceChildren(
+    header("Settings", { back: true }),
+    h(
+      "main",
+      { class: "page settings" },
+      h("h2", {}, "Camera and tracking"),
+      h(
+        "div",
+        { class: "card" },
+        row("Tracking", nowUsing(), button(MODE_LABELS[tracking.mode], async () => {
+          const pick = await choose("How should Playloom follow you?", modes.map((m) => ({ id: m, label: MODE_LABELS[m], hint: m === "auto" ? "Playloom picks what works best on this computer." : m === "practice" ? "No camera needed. Two pretend players, moved with the keyboard and mouse." : undefined })), tracking.mode);
+          if (pick && pick !== tracking.mode) setMode(pick as TrackingMode);
+        }, "", { "data-key": "mode", "aria-haspopup": "dialog" }), "mode"),
+        row("Camera", cameraList.length > 1 ? `${cameraList.length} cameras found` : "Which camera to use", button(camera?.label ?? "Default camera", async () => {
+          const ids = ["", ...cameraList.map((c) => c.deviceId)];
+          const pick = await choose("Which camera?", [{ id: "", label: "Default camera" }, ...cameraList.map((c) => ({ id: c.deviceId, label: c.label || "Camera" }))], settings.cameraId && ids.includes(settings.cameraId) ? settings.cameraId : "");
+          if (pick === null || pick === (settings.cameraId ?? "")) return;
+          settings.cameraId = pick || undefined;
+          clearTrial(); // a different camera may track at a different speed
+          persist();
+          void restartTracking();
+        }, "", { "data-key": "camera", "aria-haspopup": "dialog" })),
+        row("Mirror picture", "On works like a mirror, which most people find natural.", onOff("mirror", "Mirror picture", settings.mirror, (value) => {
+          tracking.apply({ mirror: value });
+          calibrated = false;
+          persist();
+          renderSettings();
+        })),
+        row("Gesture sensitivity", "Higher makes jumps, ducks and swipes easier. Handy for little ones.", seg("sens", "Gesture sensitivity", sensitivities, nearest(sensitivities, settings.sensitivity), (value) => {
+          tracking.apply({ sensitivity: value });
+          persist();
+          renderSettings();
+        })),
+      ),
+
+      h("h2", {}, "In the game"),
+      h(
+        "div",
+        { class: "card" },
+        row("Camera picture behind the game", "Shows you faintly behind the targets. Off keeps the picture clear and the game lighter.", seg<Backdrop>("backdrop", "Camera picture behind the game", [["off", "Off"], ["faint", "Faint"], ["strong", "Strong"]], prefs.backdrop, (value) => {
+          prefs.backdrop = value;
+          savePrefs();
+          renderSettings();
+        })),
+        row("Sound", "Game sound effects.", seg("volume", "Sound", volumes, nearest(volumes, prefs.volume), (value) => {
+          prefs.volume = audio.volume = value;
+          savePrefs();
+          audio.play("pop");
+          renderSettings();
+        })),
+        row("Full screen", "Hides everything except Playloom.", onOff("fullscreen", "Full screen", !!document.fullscreenElement, (value) => {
+          if (value === !!document.fullscreenElement) return;
+          const change = value ? document.documentElement.requestFullscreen() : document.exitFullscreen();
+          void change.then(() => renderSettings(), () => void tell("Full screen is not available", "This window cannot go full screen. In the desktop app, press F11."));
+        })),
+      ),
+
+      h("h2", {}, "Check this computer"),
+      h(
+        "div",
+        { class: "card" },
+        row("Check this computer", "Tries each kind of tracking and keeps the best one. Takes three short tests.", button([icon("pulse"), checking ? "Checking…" : "Start the check"], () => void runCheck(), "", { "data-key": "check" })),
+        row("Re-test tracking speed", "Automatic mode times each kind of tracking and keeps the fastest.", button([icon("refresh"), loadTrial() ? "Test again" : "Not tested yet"], () => {
+          if (tracking.mode !== "auto") return void tell("Set Tracking to Automatic first", "Speed testing only runs in Automatic mode. Change Tracking above, then try again.");
+          if (loadCheck()) return void tell("A full check is already saved", "Playloom is using the result of the full check. Run the check again above to refresh it.");
+          clearTrial();
+          void restartTracking();
+        }, "", { "data-key": "retest" })),
+        report,
+        loadCheck() ? h("div", { class: "row", style: "justify-content:flex-start;padding-bottom:0.8em" }, button([icon("download"), "Save the report as a file"], () => download("playloom-compatibility.json", JSON.stringify(loadCheck(), null, 2), "application/json"), "quiet", { "data-key": "save-report" })) : null,
+      ),
+
+      h("h2", {}, "Games"),
+      h("div", { class: "card" }, h("div", { class: "game-row" }, h("div", { class: "label" }, "Add a game", h("small", {}, "Open a .playloom file from someone you trust.")), button([icon("plus"), "Add a game"], () => fileInput.click(), "", { "data-key": "add" })), ...gameRows),
+
+      h("h2", {}, "About"),
+      h(
+        "div",
+        { class: "card" },
+        h("div", { class: "note" }, "Playloom is free, open-source software (GNU GPL version 3 or later).\nThe camera picture is looked at on this computer and is never stored or sent anywhere. Playloom makes no network connections.\nBody tracking uses MediaPipe (Apache License 2.0)."),
+        // The desktop application runs full screen with no window frame, so it needs its own way out.
+        /Electron/.test(navigator.userAgent) ? h("div", { class: "row", style: "justify-content:flex-start;padding-bottom:0.8em" }, button([icon("power"), "Close Playloom"], () => window.close(), "", { "data-key": "close" })) : null,
+      ),
+    ),
+    legend(),
+  );
+  screenEl.scrollTop = scrolled;
   const again = focused && screenEl.querySelector<HTMLElement>(`[data-key="${CSS.escape(focused)}"]`);
-  if (again) again.focus();
+  if (again) again.focus({ preventScroll: true });
   else focusFirst();
 }
 
+/** The device check, with a dialog that says which test is running and how far along it is. */
 async function runCheck(): Promise<void> {
   if (checking) return;
-  if (tracking.error?.camera) return void toast("No camera was found, so there is nothing to check yet.");
+  if (tracking.error?.camera) return void tell("No camera found", "There is no camera to check yet. Plug one in and try the camera again from the home screen.");
   checking = true;
   calibrated = false;
-  renderSettings();
+  const progress = showProgress("Checking this computer");
+  const STEP_MS = 5500;
+  let step = { index: 1, of: 3, label: "", since: Date.now() };
+  const paint = (): void =>
+    progress.set(`Test ${step.index} of ${step.of}${step.label ? `: ${step.label}` : ""}`, (step.index - 1 + Math.min(1, (Date.now() - step.since) / STEP_MS)) / step.of, "Stand in front of the camera, two people if you can. You do not need to hold still.");
+  paint();
+  const ticker = window.setInterval(paint, 200);
   try {
-    await tracking.check((message) => {
-      const note = document.getElementById("check-note");
-      if (note) note.textContent = `${message}\nStand in front of the camera — two people if you can.`;
+    const result = await tracking.check((s) => {
+      step = { ...s, since: Date.now() };
+      paint();
     });
+    window.clearInterval(ticker);
+    progress.close();
+    checking = false;
+    if (screen === "settings") renderSettings();
+    await tell("The check is finished", describeCheck(result).split("\n").slice(0, 2).map((line) => h("p", {}, line)));
+  } catch (err) {
+    window.clearInterval(ticker);
+    progress.close();
+    checking = false;
+    await tell("The check could not finish", (err as Error).message);
   } finally {
+    window.clearInterval(ticker);
     checking = false;
     if (screen === "settings") renderSettings();
   }
@@ -741,18 +1010,25 @@ function frame(now: number): void {
   const dt = last ? (now - last) / 1000 : 0;
   last = now;
   if (screen === "play" && playing) {
+    fitStage();
     playing.runtime.update(dt);
-    renderToCanvas(ctx, playing.runtime, { video: tracking.video(), mirror: settings.mirror, images: playing.images });
+    renderToCanvas(ctx, playing.runtime, { video: tracking.video(), mirror: settings.mirror, backdrop: prefs.backdrop, images: playing.images });
     syncPlayOverlay();
   } else if (screen === "setup") {
+    fitStage();
     drawSetup();
+    if (now - lastChips > 300) {
+      lastChips = now;
+      updateChips();
+    }
   } else if (screen === "settings" && now - lastChips > 500) {
     lastChips = now;
-    const hint = screenEl.querySelector('[data-key="mode"] small');
+    updateChips();
+    const hint = screenEl.querySelector('[data-row="mode"] .hint-text');
     if (hint) hint.textContent = nowUsing();
     if (tracking.state !== lastSettingsState) {
       lastSettingsState = tracking.state;
-      renderSettings();
+      if (overlayEl.hidden) renderSettings();
     }
   } else if (now - lastChips > 300) {
     lastChips = now;
@@ -770,7 +1046,7 @@ async function boot(): Promise<void> {
   cameraList = await tracking.cameras().catch(() => []);
   if (screen === "home") {
     renderHome();
-    focusFirst();
+    if (overlayEl.hidden) focusFirst();
   }
   // First run with a working camera: offer to measure the device once.
   if (tracking.state === "running" && !tracking.practice && !loadCheck() && !prefs.welcomed) {
@@ -778,14 +1054,11 @@ async function boot(): Promise<void> {
     savePrefs();
     const answer = await ask(
       "Welcome to Playloom!",
-      [h("p", {}, "Before the first game, Playloom can check how well this computer and camera work together. It takes about 20 seconds, and it helps to have two people standing in front of the camera.")],
-      [{ id: "yes", label: "Check now", cls: "go" }, { id: "no", label: "Later", cls: "quiet" }],
+      [h("p", {}, "Playloom can test how well this computer and your camera work together. It runs three short tests, one after another, and shows each one as it goes. Two people standing in front of the camera gives the best result."), h("p", {}, "You can also skip this and do it later in Settings.")],
+      [{ id: "yes", label: "Start the check", cls: "go", icon: "pulse" }, { id: "no", label: "Skip for now", cls: "quiet" }],
       "no",
     );
-    if (answer === "yes") {
-      show("settings");
-      await runCheck();
-    }
+    if (answer === "yes") await runCheck();
   }
 }
 
