@@ -11,7 +11,7 @@ Decisions made by the project owner. The reasoning and the alternatives consider
 | D4 | **GPL-3.0-or-later** for the platform, with a written statement that games and assets belong to their authors, and MIT for SDK schemas, type definitions and templates. | Approved | 2026-11-10 |
 | D5 | Android: Kotlin shell hosting the same web bundle, with native camera capture and inference feeding landmarks over the bridge where the WebView cannot see the camera. | Follows from D1; to be confirmed at Milestone 4 | — |
 | D6 | Rendering: Playloom's own data-driven runtime, Canvas 2D first, PixiJS behind the same interface when needed. | Follows from D1; to be confirmed at Milestone 2 | — |
-| D7 | **MediaPipe version and telemetry** — see below. | **Needs owner decision** | — |
+| D7 | **MediaPipe telemetry must be blocked.** Usage reporting to Google is never allowed to leave the device. See below. | Approved | 2026-11-10 |
 
 ## D7 — MediaPipe sends usage metrics from version 1.0.0
 
@@ -38,5 +38,20 @@ measure is already in place:
 | Disadvantages | No upstream fixes; the pin must be defended against well-meaning upgrades | Relies on blocking rather than absence; the library's notice asks integrators to obtain user consent, which is awkward for a children's product even when blocked | More work now; candidates not yet benchmarked; LiteRT.js must itself be checked for reporting |
 | Performance / compatibility | As measured in [status.md](../status.md) | Unknown until measured | Unknown until measured; MoveNet is single-pass, so it may be faster with two players |
 
-**Recommendation:** A now, and treat the MoveNet backend already planned under D3 as the route to C —
-choosing between them by benchmark once both exist. B is not recommended.
+**Decision (owner, 2026-11-10): block it.** Playloom does not send MediaPipe's usage metrics to
+Google, by whatever means are needed.
+
+How that is carried out:
+
+1. The Content-Security-Policy that forbids outbound connections is a permanent, required part of every
+   Playloom page, and the desktop and Android shells must enforce the same thing at their own level
+   (request blocking in Electron; no `INTERNET` permission on Android).
+2. The dependency stays on 0.10.34 for now, because a version with nothing to block is strictly safer
+   than one that relies on the block, and no newer feature is needed yet.
+3. Upgrading is permitted when there is a reason to (a fix, a better model), on condition that the
+   upgrade is tested and shown to make no outbound request that gets through.
+
+**Is blocking allowed?** MediaPipe is licensed under Apache-2.0, which lets anyone use, modify and
+redistribute it and contains no condition requiring that telemetry be delivered. Playloom calls no
+Google service and has accepted no terms of service for one. On that reading, preventing the request is
+within the licence. This is an engineering reading of the licence, not legal advice.

@@ -16,6 +16,28 @@
     },
     "tracking": "hands"
   },
+  "assets": [
+    {
+      "id": "background",
+      "type": "image",
+      "file": "assets/background.png"
+    },
+    {
+      "id": "hole",
+      "type": "image",
+      "file": "assets/hole.png"
+    },
+    {
+      "id": "mole",
+      "type": "image",
+      "file": "assets/mole.png"
+    },
+    {
+      "id": "gold-star",
+      "type": "image",
+      "file": "assets/gold-star.png"
+    }
+  ],
   "startScene": "garden",
   "scenes": [
     {
@@ -38,7 +60,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-1",
@@ -58,7 +81,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-2",
@@ -72,7 +96,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-2",
@@ -92,7 +117,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-3",
@@ -106,7 +132,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-3",
@@ -126,7 +153,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-4",
@@ -140,7 +168,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-4",
@@ -160,7 +189,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-5",
@@ -174,7 +204,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-5",
@@ -194,7 +225,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-6",
@@ -208,7 +240,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-6",
@@ -228,7 +261,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-7",
@@ -242,7 +276,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-7",
@@ -262,7 +297,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "hole-8",
@@ -276,7 +312,8 @@
           "layer": 0,
           "tags": [
             "hole"
-          ]
+          ],
+          "image": "hole"
         },
         {
           "id": "mole-8",
@@ -296,7 +333,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "mole"
         },
         {
           "id": "gold-1",
@@ -315,7 +353,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "gold-star"
         },
         {
           "id": "gold-2",
@@ -334,7 +373,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70
-          }
+          },
+          "image": "gold-star"
         },
         {
           "id": "clock",
@@ -523,7 +563,8 @@
             }
           ]
         }
-      ]
+      ],
+      "backgroundImage": "background"
     }
   ]
 }

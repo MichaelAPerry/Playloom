@@ -72,6 +72,7 @@ layout is in [docs/architecture/assessment.md](docs/architecture/assessment.md).
 - [Architecture assessment](docs/architecture/assessment.md) and [decisions](docs/architecture/decisions.md)
 - [Motion API](docs/motion-api.md)
 - [Game format](docs/game-format.md)
+- [Art prompts for the bundled games](docs/art-prompts.md)
 - [Simulator](docs/simulator.md)
 - [Building and testing](docs/building.md)
 - [Performance profiles and the compatibility check](docs/performance.md)

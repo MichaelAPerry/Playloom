@@ -7,6 +7,8 @@ export interface CanvasRenderOptions {
   /** A camera picture to show faintly behind the game, already mirrored or not as `mirror` says. */
   video?: HTMLVideoElement | null;
   mirror?: boolean;
+  /** Loaded pictures by asset id. Anything missing falls back to the sprite's shape and colour. */
+  images?: ReadonlyMap<string, CanvasImageSource>;
 }
 
 /**
@@ -28,6 +30,8 @@ export function renderToCanvas(ctx: CanvasRenderingContext2D, runtime: GameRunti
 
   ctx.fillStyle = runtime.scene.background;
   ctx.fillRect(0, 0, W, H);
+  const backdrop = runtime.scene.backgroundImage && options.images?.get(runtime.scene.backgroundImage);
+  if (backdrop) ctx.drawImage(backdrop, 0, 0, W, H);
   const video = options.video;
   if (video && video.readyState >= 2 && video.videoWidth > 0) {
     // Players see themselves faintly, which makes aiming far easier. The picture is stretched to
@@ -44,7 +48,7 @@ export function renderToCanvas(ctx: CanvasRenderingContext2D, runtime: GameRunti
 
   const objects = [...runtime.objects].filter((o) => o.visible && o.type !== "timer").sort((a, b) => a.layer - b.layer);
   for (const o of objects) {
-    if (o.type === "sprite") drawSprite(ctx, o);
+    if (o.type === "sprite") drawSprite(ctx, o, o.image ? options.images?.get(o.image) : undefined);
     else drawText(ctx, o, runtime.formatText(o.text));
   }
 
@@ -86,10 +90,15 @@ export function renderToCanvas(ctx: CanvasRenderingContext2D, runtime: GameRunti
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
-function drawSprite(ctx: CanvasRenderingContext2D, o: LiveObject): void {
+function drawSprite(ctx: CanvasRenderingContext2D, o: LiveObject, image?: CanvasImageSource): void {
   ctx.save();
   ctx.translate(o.x, o.y);
   if (o.rotation) ctx.rotate((o.rotation * Math.PI) / 180);
+  if (image) {
+    ctx.drawImage(image, -o.width / 2, -o.height / 2, o.width, o.height);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = o.color;
   ctx.strokeStyle = "rgba(0,0,0,0.25)";
   ctx.lineWidth = Math.max(2, Math.min(o.width, o.height) * 0.05);

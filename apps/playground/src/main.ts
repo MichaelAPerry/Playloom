@@ -51,6 +51,27 @@ let busy = false;
 // ---- Games --------------------------------------------------------------------------------------
 
 const BUNDLED: Record<string, unknown> = { "mole-mayhem": moleMayhem, "slice-party": sliceParty };
+// Every picture found in a bundled game's assets folder, as "<game>/assets/<file>" → URL.
+const ASSET_URLS = Object.fromEntries(
+  Object.entries(import.meta.glob("../../../games/*/assets/*.{png,webp,jpg,jpeg}", { eager: true, query: "?url", import: "default" })).map(
+    ([path, url]) => [path.split("/games/")[1]!, url as string],
+  ),
+);
+let images = new Map<string, HTMLImageElement>();
+
+/** Load a game's pictures. A picture that is missing or broken is skipped; the game draws shapes instead. */
+function loadImages(game: GameDefinition, folder: string | null): Map<string, HTMLImageElement> {
+  const loaded = new Map<string, HTMLImageElement>();
+  if (!folder) return loaded;
+  for (const asset of game.assets ?? []) {
+    const url = ASSET_URLS[`${folder}/${asset.file}`];
+    if (!url) continue;
+    const img = new Image();
+    img.onload = () => loaded.set(asset.id, img);
+    img.src = url;
+  }
+  return loaded;
+}
 const audio = new WebAudioPlayer();
 const gameSelect = $<HTMLSelectElement>("game");
 let runtime: GameRuntime | null = null;
@@ -59,9 +80,10 @@ let runtime: GameRuntime | null = null;
 for (const type of ["pointerdown", "keydown"] as const) window.addEventListener(type, () => audio.unlock(), { once: true });
 $<HTMLInputElement>("sound").addEventListener("change", (e) => (audio.volume = (e.target as HTMLInputElement).checked ? 0.8 : 0));
 
-function startGame(game: GameDefinition | null): void {
+function startGame(game: GameDefinition | null, folder: string | null = null): void {
   runtime?.stop();
   runtime = null;
+  images = game ? loadImages(game, folder) : new Map();
   if (game) {
     runtime = new GameRuntime(game, api, { audio });
     runtime.start();
@@ -77,7 +99,7 @@ gameSelect.addEventListener("change", () => {
   if (!data) return startGame(null);
   // Bundled games go through the same validation as anyone else's.
   const result = validateGame(data);
-  if (result.ok) startGame(result.game);
+  if (result.ok) startGame(result.game, gameSelect.value);
   else showNotice(`This game could not be loaded: ${result.issues[0]!.path} ${result.issues[0]!.message}`, true);
 });
 $("restart").addEventListener("click", () => runtime?.start());
@@ -401,7 +423,7 @@ function frame(now: number): void {
   lastFrame = now;
   if (runtime) {
     runtime.update(elapsed);
-    renderToCanvas(ctx, runtime, { video: currentVideo(), mirror: mirrorBox.checked });
+    renderToCanvas(ctx, runtime, { video: currentVideo(), mirror: mirrorBox.checked, images });
   } else {
     draw(ctx, api, {
       video: currentVideo(),

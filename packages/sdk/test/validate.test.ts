@@ -121,6 +121,20 @@ describe("validateGame", () => {
     expect(found).toMatch(/player number from 1 to 2/);
   });
 
+  it("only accepts picture files inside the game's own assets folder", () => {
+    const g = base();
+    g.assets = [{ id: "ok", type: "image", file: "assets/mole.png" }];
+    g.scenes[0].objects[0].image = "ok";
+    g.scenes[0].backgroundImage = "ok";
+    expect(issues(validateGame(g))).toEqual([]);
+    for (const file of ["https://example.com/a.png", "../secret.png", "assets/../../a.png", "assets/a.svg", "/etc/passwd", "assets/a.png?x=1", "data:image/png;base64,AAAA"]) {
+      g.assets = [{ id: "ok", type: "image", file }];
+      expect(issues(validateGame(g)).join(), file).toMatch(/must look like assets\/name\.png/);
+    }
+    g.assets = [];
+    expect(issues(validateGame(g)).join()).toMatch(/no asset called "ok"/);
+  });
+
   it("enforces size limits", () => {
     const g = base();
     g.scenes[0].rules = Array.from({ length: LIMITS.rulesPerScene + 1 }, () => g.scenes[0].rules[0]);

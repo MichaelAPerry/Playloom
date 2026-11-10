@@ -42,6 +42,8 @@ export interface LiveObject {
   height: number;
   shape: "circle" | "rect" | "star" | "diamond";
   color: string;
+  /** Asset id of the picture drawn for this sprite, or "" for the plain shape. */
+  image: string;
   glyph: string;
   rotation: number;
   vx: number;
@@ -631,6 +633,7 @@ function instantiate(def: ObjectDef, id: string): LiveObject {
     height,
     shape: sprite?.shape ?? "rect",
     color: sprite?.color ?? text?.color ?? "#ffffff",
+    image: sprite?.image ?? "",
     glyph: sprite?.glyph ?? "",
     rotation: sprite?.rotation ?? 0,
     vx: sprite?.vx ?? 0,

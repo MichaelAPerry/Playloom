@@ -9,7 +9,7 @@ Nothing is listed as working unless it was run.
 
 | Milestone | State |
 |---|---|
-| Architecture assessment and decisions | Done; D1–D4 approved. **D7 (MediaPipe telemetry) needs an owner decision.** |
+| Architecture assessment and decisions | Done; D1–D4 and D7 approved. |
 | 1 — Motion engine and simulator | **Software complete and tested with simulated and synthetic input. Not yet tested with a physical camera or real people.** |
 | 2 — First games and shared runtime | **Software complete and tested with simulated players. Not yet played by real people with a camera.** |
 | 3 — Console | Not started |
@@ -96,7 +96,6 @@ The compatibility check measured all three and recommended **Standard** on the p
 
 ### Owner actions requested
 
-- Decide **D7** ([decisions.md](architecture/decisions.md)).
 - Try the playground with two people and a webcam, run the compatibility check, and share the report —
   this is the missing part of the Milestone 1 acceptance test. No install is needed once the web demo
   is published: merge to `main`, set **Settings → Pages → Source** to **GitHub Actions**, and open the
@@ -137,7 +136,7 @@ fair and physically comfortable is unknown.
 | Check | Result |
 |---|---|
 | `pnpm typecheck` | Passed |
-| `pnpm test` | 95 of 95 passed (9 files): 13 validator tests, 16 runtime and playthrough tests, 66 from Milestone 1 |
+| `pnpm test` | 96 of 96 passed (9 files): 14 validator tests, 16 runtime and playthrough tests, 66 from Milestone 1 |
 | `pnpm build` | Passed |
 | Browser run of both games, production build, headless Chromium | Scoring, effects, HUD and file loading worked; a malformed game file was rejected with a readable message |
 
@@ -145,12 +144,14 @@ fair and physically comfortable is unknown.
 
 - **Slice Party is cooperative** (team goal of 300 in 60 seconds) so that both modes are exercised. The
   brief did not specify. Changing it to competitive is an edit to one rule in its JSON file.
-- Game art is built-in shapes and colours; there are no image assets yet.
+- Game art is built-in shapes until pictures are added to each game's `assets` folder.
 - Round length (60 s), scores and timings are first guesses, untested with players.
 
 ### Known limitations
 
-1. No imported images, audio files or sprite animation; no `.playloom` package container yet.
+1. Image assets are supported for bundled games (sprites and scene backgrounds, with shapes as the
+   fallback), but **no artwork exists yet** — see [art-prompts.md](art-prompts.md). No imported audio,
+   sprite animation or `.playloom` package container yet; a game opened from a file gets shapes only.
 2. No published JSON Schema file; the TypeScript validator is the single source of truth. (A schema
    validator library that generates code at run time would be blocked by Playloom's own security
    policy, so the validator is hand-written.)

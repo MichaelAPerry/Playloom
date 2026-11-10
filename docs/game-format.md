@@ -7,9 +7,20 @@ The authoritative definitions are the TypeScript types in `packages/sdk/src/form
 in `packages/sdk/src/validate.ts` (both MIT-licensed). The bundled games in `games/` are complete
 examples.
 
-Status: implemented for single-file games with built-in shapes and sounds. **Not yet implemented:**
-imported image and audio assets, sprite animation, the `.playloom` package (ZIP) container, and a
+Status: implemented with built-in shapes and sounds, plus image assets for sprites and backgrounds.
+**Not yet implemented:** audio assets, sprite animation, the `.playloom` package (ZIP) container, and a
 published JSON Schema file. These are planned and will be additive.
+
+## Pictures
+
+```jsonc
+"assets": [{ "id": "mole", "type": "image", "file": "assets/mole.png" }]
+```
+
+A sprite uses a picture with `"image": "mole"`; a scene with `"backgroundImage": "background"`. `file`
+must be `assets/<name>` with a `.png`, `.webp`, `.jpg` or `.jpeg` ending — a game cannot refer to a web
+address or to a file outside its own folder. If a picture is missing or fails to load, the sprite's
+`shape` and `color` are drawn instead, so those are always required.
 
 ## Shape of a game
 

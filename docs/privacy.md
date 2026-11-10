@@ -26,8 +26,8 @@ requirement.
 
 MediaPipe, the pose-estimation library, added usage reporting to Google in version 1.0.0, with no
 documented way to disable it. Playloom therefore pins **version 0.10.34**, which contains no such code,
-and keeps the Content-Security-Policy as a second line of defence. The details and the open decision
-about the long-term approach are recorded as D7 in
+and keeps the Content-Security-Policy as a second line of defence. The owner's decision is that this
+reporting is always blocked; the details are recorded as D7 in
 [architecture/decisions.md](architecture/decisions.md).
 
 **Do not upgrade `@mediapipe/tasks-vision` without re-reading its privacy notice and checking the

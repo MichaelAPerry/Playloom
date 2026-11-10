@@ -16,6 +16,33 @@
     },
     "tracking": "hands"
   },
+  "assets": [
+    {
+      "id": "background",
+      "type": "image",
+      "file": "assets/background.png"
+    },
+    {
+      "id": "melon",
+      "type": "image",
+      "file": "assets/melon.png"
+    },
+    {
+      "id": "lime",
+      "type": "image",
+      "file": "assets/lime.png"
+    },
+    {
+      "id": "starfruit",
+      "type": "image",
+      "file": "assets/starfruit.png"
+    },
+    {
+      "id": "bomb",
+      "type": "image",
+      "file": "assets/bomb.png"
+    }
+  ],
   "variables": [
     {
       "id": "goal",
@@ -129,7 +156,8 @@
           "collider": {
             "shape": "circle",
             "radius": 70.0
-          }
+          },
+          "image": "melon"
         },
         {
           "id": "lime",
@@ -149,7 +177,8 @@
           "collider": {
             "shape": "circle",
             "radius": 58.0
-          }
+          },
+          "image": "lime"
         },
         {
           "id": "starfruit",
@@ -169,7 +198,8 @@
           "collider": {
             "shape": "circle",
             "radius": 72.0
-          }
+          },
+          "image": "starfruit"
         },
         {
           "id": "bomb",
@@ -190,7 +220,8 @@
           "collider": {
             "shape": "circle",
             "radius": 48
-          }
+          },
+          "image": "bomb"
         }
       ],
       "rules": [
@@ -448,7 +479,8 @@
             }
           ]
         }
-      ]
+      ],
+      "backgroundImage": "background"
     }
   ]
 }

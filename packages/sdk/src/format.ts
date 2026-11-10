@@ -22,9 +22,18 @@ export interface GameDefinition {
   formatVersion: 1;
   meta: GameMeta;
   requires: Requirements;
+  /** Pictures the game uses. Sprites and scene backgrounds refer to them by id. */
+  assets?: AssetDef[];
   variables?: VariableDef[];
   startScene: string;
   scenes: SceneDef[];
+}
+
+export interface AssetDef {
+  id: string;
+  type: "image";
+  /** Path inside the game's folder: `assets/<name>.png`, `.webp`, `.jpg` or `.jpeg`. */
+  file: string;
 }
 
 export interface GameMeta {
@@ -59,6 +68,8 @@ export interface SceneDef {
   size: [width: number, height: number];
   /** CSS hex colour, e.g. `#1d2233`. */
   background: string;
+  /** An image asset stretched over the whole scene. The colour shows until it has loaded. */
+  backgroundImage?: string;
   objects: ObjectDef[];
   /** Objects that do not exist until a `spawn` action creates copies of them. */
   templates?: ObjectDef[];
@@ -84,6 +95,8 @@ export interface SpriteDef extends ObjectBase {
   height: number;
   shape: Shape;
   color: string;
+  /** An image asset drawn in place of the shape. The shape is used if the picture is missing. */
+  image?: string;
   /** A short piece of text drawn in the middle of the shape (a letter, number or symbol). */
   glyph?: string;
   /** Touch area. Defaults to a circle fitting the sprite. */
@@ -198,6 +211,7 @@ export const LIMITS = {
   actionsPerRule: 50,
   conditionsPerRule: 20,
   variables: 200,
+  assets: 200,
   nesting: 8,
   stringLength: 500,
   /** Objects alive at once, including spawned ones (enforced by the runtime). */

@@ -28,6 +28,7 @@ export type ValidationResult = { ok: true; game: GameDefinition } | { ok: false;
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const ASSET_FILE = /^assets\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(png|webp|jpg|jpeg)$/;
 const VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
 const SPECIAL_REFS = ["$object", "$other"];
 const MAX_ISSUES = 50;
@@ -97,6 +98,7 @@ interface SceneIndex {
 
 interface Context {
   c: Checker;
+  assets: Set<string>;
   variables: Set<string>;
   sceneIds: Set<string>;
   scene: SceneIndex;
@@ -105,7 +107,7 @@ interface Context {
 
 export function validateGame(data: unknown): ValidationResult {
   const c = new Checker();
-  const game = c.object(data, "game", ["formatVersion", "meta", "requires", "startScene", "scenes"], ["variables"]);
+  const game = c.object(data, "game", ["formatVersion", "meta", "requires", "startScene", "scenes"], ["variables", "assets"]);
   if (!game) return { ok: false, issues: c.issues };
 
   if (game.formatVersion !== 1) {
@@ -143,6 +145,23 @@ export function validateGame(data: unknown): ValidationResult {
     }
   }
 
+  const assets = new Set<string>();
+  if ("assets" in game) {
+    c.array(game.assets, "assets", LIMITS.assets)?.forEach((a, i) => {
+      const o = c.object(a, `assets[${i}]`, ["id", "type", "file"]);
+      if (!o) return;
+      if (c.id(o.id, `assets[${i}].id`)) {
+        if (assets.has(o.id)) c.fail(`assets[${i}].id`, `"${o.id}" is used twice`);
+        assets.add(o.id);
+      }
+      c.oneOf(o.type, `assets[${i}].type`, ["image"] as const);
+      // A fixed pattern, so a game can never point at a file outside its own assets folder or at a web address.
+      if (typeof o.file !== "string" || !ASSET_FILE.test(o.file)) {
+        c.fail(`assets[${i}].file`, "must look like assets/name.png (png, webp, jpg or jpeg; letters, digits, - and _ only)");
+      }
+    });
+  }
+
   const variables = new Set<string>();
   if ("variables" in game) {
     c.array(game.variables, "variables", LIMITS.variables)?.forEach((v, i) => {
@@ -168,7 +187,7 @@ export function validateGame(data: unknown): ValidationResult {
   if (c.id(game.startScene, "startScene") && !sceneIds.has(game.startScene)) {
     c.fail("startScene", `there is no scene called "${game.startScene}"`);
   }
-  scenes.forEach((s, i) => checkScene(s, `scenes[${i}]`, { c, variables, sceneIds, maxPlayers, scene: { objects: new Map(), templates: new Set(), tags: new Set() } }));
+  scenes.forEach((s, i) => checkScene(s, `scenes[${i}]`, { c, assets, variables, sceneIds, maxPlayers, scene: { objects: new Map(), templates: new Set(), tags: new Set() } }));
 
   // Tracking requirement must be honest: gesture triggers other than swipe need a skeleton.
   if (requires && requires.tracking === "hands") {
@@ -205,7 +224,7 @@ export function parseGame(text: string): ValidationResult {
 
 function checkScene(v: unknown, path: string, ctx: Context): void {
   const { c } = ctx;
-  const scene = c.object(v, path, ["id", "size", "background", "objects", "rules"], ["templates"]);
+  const scene = c.object(v, path, ["id", "size", "background", "objects", "rules"], ["templates", "backgroundImage"]);
   if (!scene) return;
   c.id(scene.id, `${path}.id`);
   const size = c.array(scene.size, `${path}.size`, 2, 2);
@@ -214,13 +233,14 @@ function checkScene(v: unknown, path: string, ctx: Context): void {
     c.number(size[1], `${path}.size[1]`, 100, 8000);
   }
   color(c, scene.background, `${path}.background`);
+  if ("backgroundImage" in scene) asset(ctx, scene.backgroundImage, `${path}.backgroundImage`);
 
   const objects = c.array(scene.objects, `${path}.objects`, LIMITS.objectsPerScene) ?? [];
   const templates = "templates" in scene ? (c.array(scene.templates, `${path}.templates`, LIMITS.templatesPerScene) ?? []) : [];
   const seen = new Set<string>();
   const register = (list: unknown[], listPath: string, isTemplate: boolean): void => {
     list.forEach((o, i) => {
-      const def = checkObject(o, `${listPath}[${i}]`, c);
+      const def = checkObject(o, `${listPath}[${i}]`, ctx);
       if (!def) return;
       if (seen.has(def.id)) c.fail(`${listPath}[${i}].id`, `"${def.id}" is used twice in this scene`);
       seen.add(def.id);
@@ -239,18 +259,24 @@ function color(c: Checker, v: unknown, path: string): void {
   if (typeof v !== "string" || !COLOR.test(v)) c.fail(path, "must be a hex colour such as #ff9f1c");
 }
 
-function checkObject(v: unknown, path: string, c: Checker): { id: string; type: string; tags: string[] } | null {
+function asset(ctx: Context, v: unknown, path: string): void {
+  if (ctx.c.id(v, path) && !ctx.assets.has(v)) ctx.c.fail(path, `there is no asset called "${v}"`);
+}
+
+function checkObject(v: unknown, path: string, ctx: Context): { id: string; type: string; tags: string[] } | null {
+  const { c } = ctx;
   const type = (v as Obj | null)?.type;
   const base = ["id", "type", "x", "y"];
   const baseOptional = ["layer", "visible", "tags"];
   let o: Obj | null;
   if (type === "sprite") {
-    o = c.object(v, path, [...base, "width", "height", "shape", "color"], [...baseOptional, "glyph", "collider", "vx", "vy", "gravity", "spin", "rotation"]);
+    o = c.object(v, path, [...base, "width", "height", "shape", "color"], [...baseOptional, "image", "glyph", "collider", "vx", "vy", "gravity", "spin", "rotation"]);
     if (!o) return null;
     c.number(o.width, `${path}.width`, 1, 8000);
     c.number(o.height, `${path}.height`, 1, 8000);
     c.oneOf(o.shape, `${path}.shape`, SHAPES);
     color(c, o.color, `${path}.color`);
+    if ("image" in o) asset(ctx, o.image, `${path}.image`);
     if ("glyph" in o) c.string(o.glyph, `${path}.glyph`, 8);
     for (const k of ["vx", "vy", "gravity", "spin", "rotation"]) if (k in o) c.number(o[k], `${path}.${k}`, -20000, 20000);
     if ("collider" in o) {
