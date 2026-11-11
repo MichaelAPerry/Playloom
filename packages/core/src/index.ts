@@ -14,3 +14,7 @@ export * from "./backends/movenet";
 export * from "./backends/motion-lite";
 export * from "./performance/check";
 export * from "./setup/join";
+export * from "./tracking/display-motion";
+export * from "./performance/frame-pacing";
+export * from "./performance/diagnostics";
+export * from "./performance/diagnostics-panel";

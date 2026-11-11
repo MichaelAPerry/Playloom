@@ -1,6 +1,7 @@
 import { listCameras } from "../camera/camera";
 import type { MotionEngine } from "../engine";
 import type { PoseSource } from "../types";
+import type { FramePacingStats } from "./frame-pacing";
 import { recommendProfile, type BackendMeasurement, type CompatibilityReport, type ProfileRecommendation } from "./profile";
 
 const MEASURE_MS = 4000;
@@ -15,6 +16,8 @@ export async function runCompatibilityCheck(
   backends: Array<() => PoseSource>,
   renderFps: () => number,
   progress: (message: string) => void,
+  /** Frame pacing of the host's render loop, read after each backend's measurement (optional). */
+  pacing?: () => FramePacingStats,
 ): Promise<{ report: CompatibilityReport; recommendation: ProfileRecommendation }> {
   const report: CompatibilityReport = {
     createdAt: new Date().toISOString(),
@@ -58,6 +61,12 @@ export async function runCompatibilityCheck(
       measurement.latencyMs = round(status.latencyMs);
       measurement.processingMs = round(status.processingMs);
       report.renderFps = Math.max(report.renderFps, round(renderFps()));
+      const frames = pacing?.();
+      if (frames && frames.frames > 0) {
+        report.renderP95Ms = Math.max(report.renderP95Ms ?? 0, round(frames.p95Ms));
+        report.renderWorstMs = Math.max(report.renderWorstMs ?? 0, round(frames.worstMs));
+        report.renderLongFrames = Math.max(report.renderLongFrames ?? 0, frames.longFrames);
+      }
     } catch (err) {
       measurement.error = (err as Error)?.message ?? String(err);
       if ((err as Error)?.name === "CameraError") report.camera.error = measurement.error;

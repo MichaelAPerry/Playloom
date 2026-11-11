@@ -10,6 +10,7 @@ import {
   type SwipeDirection,
 } from "./gestures/recognizer";
 import { Average, RateMeter } from "./performance/meters";
+import { DEFAULT_DISPLAY_MOTION, DisplayPoint, type DisplayMotionOptions } from "./tracking/display-motion";
 import {
   IdentityTracker,
   type Detection,
@@ -29,6 +30,7 @@ import type {
   RawPerson,
   Skeleton,
   SourceCapabilities,
+  SourceDiagnostics,
   Unsubscribe,
 } from "./types";
 
@@ -94,6 +96,11 @@ export interface TrackingStatus {
   latencyMs: number;
   /** Mean engine time per frame, milliseconds. */
   processingMs: number;
+  /**
+   * Mean time from camera capture to the moment a result was first drawn (`advance` was called
+   * with it), milliseconds. This is what a player feels, before prediction. 0 until `advance` is used.
+   */
+  captureToScreenMs: number;
   identity: IdentityState;
   /** True while players must act to restore identity. */
   needsAction: boolean;
@@ -102,6 +109,12 @@ export interface TrackingStatus {
 }
 
 export interface MotionApi {
+  /**
+   * Players as they should be drawn *now*. Once the host calls `MotionEngine.advance(now)` each
+   * rendered frame these are display-time states (hands, body and skeleton moved smoothly between
+   * and slightly beyond tracking results); before that they are the latest tracking result.
+   * Gestures always come from real tracking frames.
+   */
   readonly players: {
     get(id: PlayerId): PlayerState | undefined;
     all(): PlayerState[];
@@ -124,6 +137,8 @@ export interface EngineOptions {
   /** Keypoints below this confidence are treated as not visible. */
   minKeypointScore: number;
   smoothing: OneEuroOptions;
+  /** Display-rate interpolation and bounded prediction, active once the host calls `advance`. */
+  displayMotion: DisplayMotionOptions;
   tracker: Partial<TrackerOptions>;
   /** Clock used for latency measurement; must share a time base with frame timestamps. */
   now: () => number;
@@ -136,6 +151,7 @@ export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
   thresholds: DEFAULT_THRESHOLDS,
   minKeypointScore: 0.3,
   smoothing: DEFAULT_ONE_EURO,
+  displayMotion: DEFAULT_DISPLAY_MOTION,
   tracker: {},
   now: () => performance.now(),
 };
@@ -223,6 +239,13 @@ export class MotionEngine {
   private lastViews: TrackView[] = [];
   /** Recent frames of each tracked body, for the medians used by `calibrateNow`. */
   private history = new Map<number, Samples>();
+  // Display-rate motion
+  private points = new Map<string, DisplayPoint>();
+  private displayStates = new Map<PlayerId, PlayerState>();
+  private displayNow: number | null = null;
+  private lastFrameAt: number | null = null;
+  private shownFrameAt: number | null = null;
+  private screenDelay = new Average();
 
   constructor(options: Partial<EngineOptions> = {}) {
     this.options = { ...DEFAULT_ENGINE_OPTIONS, ...options };
@@ -231,8 +254,8 @@ export class MotionEngine {
     const engine = this;
     this.api = {
       players: {
-        get: (id) => this.states.get(id),
-        all: () => [...this.states.values()].sort((a, b) => a.id - b.id),
+        get: (id) => this.visible().get(id),
+        all: () => [...this.visible().values()].sort((a, b) => a.id - b.id),
       },
       events: { on: (type, fn) => this.emitter.on(type, fn) },
       get status(): TrackingStatus {
@@ -268,10 +291,16 @@ export class MotionEngine {
     await this.source.stop();
   }
 
-  /** Change mirror, sensitivity or gesture thresholds while running. */
-  configure(patch: Partial<Pick<EngineOptions, "mirror" | "sensitivity" | "thresholds">>): void {
+  /** Change mirror, sensitivity, gesture thresholds or display motion while running. */
+  configure(patch: Partial<Pick<EngineOptions, "mirror" | "sensitivity" | "thresholds">> & { displayMotion?: Partial<DisplayMotionOptions> }): void {
     const mirrorChanged = patch.mirror !== undefined && patch.mirror !== this.options.mirror;
-    Object.assign(this.options, patch);
+    const { displayMotion, ...rest } = patch;
+    Object.assign(this.options, rest);
+    if (displayMotion) {
+      this.options.displayMotion = { ...this.options.displayMotion, ...displayMotion };
+      for (const point of this.points.values()) point.setOptions(this.options.displayMotion);
+      this.rebuildDisplay();
+    }
     for (const body of this.bodies.values()) {
       body.gestures.sensitivity = this.options.sensitivity;
       body.gestures.thresholds = this.options.thresholds;
@@ -316,6 +345,30 @@ export class MotionEngine {
     else this.states.delete(b);
     if (sb) this.states.set(a, { ...sb, id: a });
     else this.states.delete(a);
+    this.forgetPoints(a);
+    this.forgetPoints(b);
+    this.rebuildDisplay();
+  }
+
+  /**
+   * Call once per rendered frame with the current time (same clock as frame timestamps, normally
+   * `performance.now()` or the `requestAnimationFrame` time). From then on `api.players` returns
+   * display-time states for that moment: hands, body position and skeleton are interpolated
+   * between tracking results and extended slightly past the latest one (see `DisplayMotionOptions`).
+   * Gesture detection is not affected; it only ever sees real tracking frames.
+   */
+  advance(now: number): void {
+    this.displayNow = now;
+    if (this.lastFrameAt !== null && this.shownFrameAt !== this.lastFrameAt) {
+      this.shownFrameAt = this.lastFrameAt;
+      this.screenDelay.add(Math.max(0, now - this.lastFrameAt));
+    }
+    this.rebuildDisplay();
+  }
+
+  /** Measurements from the active source (camera size, camera fps, model time), if it offers them. */
+  sourceDiagnostics(): SourceDiagnostics | null {
+    return this.source?.diagnostics?.() ?? null;
   }
 
   /** Feed a frame directly. Sources call this through the sink given to `start`; tests may call it too. */
@@ -343,10 +396,16 @@ export class MotionEngine {
     for (const view of views) {
       liveUids.add(view.uid);
       liveIds.add(view.id);
-      this.states.set(view.id, this.updatePlayer(view, t, gestureEvents));
+      const state = this.updatePlayer(view, t, gestureEvents);
+      this.states.set(view.id, state);
+      this.feedDisplay(view.id, state, view.person !== undefined && view.state !== "lost", t, began);
     }
     for (const uid of [...this.bodies.keys()]) if (!liveUids.has(uid)) this.bodies.delete(uid);
-    for (const id of [...this.states.keys()]) if (!liveIds.has(id)) this.states.delete(id);
+    for (const id of [...this.states.keys()]) {
+      if (liveIds.has(id)) continue;
+      this.states.delete(id);
+      this.forgetPoints(id);
+    }
 
     this.lastViews = views;
     for (const v of views) {
@@ -364,6 +423,8 @@ export class MotionEngine {
     for (const e of gestureEvents) this.emitter.emit("gesture", e);
 
     this.rate.tick(t);
+    this.lastFrameAt = t;
+    this.rebuildDisplay();
     const now = this.options.now();
     this.latency.add(Math.max(0, now - t));
     this.processing.add(now - began);
@@ -380,6 +441,7 @@ export class MotionEngine {
       trackingHz: this.rate.rate(),
       latencyMs: this.latency.get(),
       processingMs: this.processing.get(),
+      captureToScreenMs: this.screenDelay.get(),
       identity: this.tracker.identityState,
       needsAction: this.needsAction,
       peopleInView: this.peopleInView,
@@ -390,6 +452,10 @@ export class MotionEngine {
     this.tracker.reset();
     this.bodies.clear();
     this.states.clear();
+    this.points.clear();
+    this.displayStates.clear();
+    this.lastFrameAt = this.shownFrameAt = null;
+    this.screenDelay.reset();
     this.regionSeen.clear();
     this.needsAction = false;
     this.history.clear();
@@ -513,6 +579,78 @@ export class MotionEngine {
       out[name as KeypointName] = { x: fx.filter(k.x, t), y: fy.filter(k.y, t), score: k.score };
     }
     return out;
+  }
+
+  // ---- Display-rate motion ------------------------------------------------------------------------
+
+  private visible(): Map<PlayerId, PlayerState> {
+    return this.displayNow !== null && this.options.displayMotion.enabled ? this.displayStates : this.states;
+  }
+
+  private forgetPoints(id: PlayerId): void {
+    const prefix = `${id}|`;
+    for (const key of [...this.points.keys()]) if (key.startsWith(prefix)) this.points.delete(key);
+  }
+
+  private feed(id: PlayerId, name: string, p: Point | undefined, t: number, arrived: number): void {
+    const key = `${id}|${name}`;
+    if (!p) {
+      this.points.delete(key);
+      return;
+    }
+    let point = this.points.get(key);
+    if (!point) this.points.set(key, (point = new DisplayPoint(this.options.displayMotion)));
+    point.push(p, t, arrived);
+  }
+
+  /** Give the display-rate predictors the positions of a fresh tracking result. */
+  private feedDisplay(id: PlayerId, state: PlayerState, fresh: boolean, t: number, arrived: number): void {
+    if (!state.present) return this.forgetPoints(id);
+    if (!fresh) return;
+    this.feed(id, "leftHand", state.leftHand, t, arrived);
+    this.feed(id, "rightHand", state.rightHand, t, arrived);
+    this.feed(id, "body", state.bodyPosition, t, arrived);
+    const seen = new Set<string>();
+    for (const name in state.skeleton) {
+      seen.add(name);
+      this.feed(id, `k.${name}`, state.skeleton[name as KeypointName], t, arrived);
+    }
+    for (const key of [...this.points.keys()]) {
+      if (key.startsWith(`${id}|k.`) && !seen.has(key.slice(String(id).length + 3))) this.points.delete(key);
+    }
+  }
+
+  private rebuildDisplay(): void {
+    const now = this.displayNow;
+    if (now === null) return;
+    this.displayStates.clear();
+    for (const [id, state] of this.states) this.displayStates.set(id, this.displayState(id, state, now));
+  }
+
+  private displayState(id: PlayerId, state: PlayerState, now: number): PlayerState {
+    if (!state.present) return state;
+    const at = (name: string, fallback: Point | undefined): Point | undefined => {
+      if (!fallback) return undefined;
+      const point = this.points.get(`${id}|${name}`);
+      return point?.started ? point.at(now) : fallback;
+    };
+    let skeleton = state.skeleton;
+    if (skeleton) {
+      const out: Skeleton = {};
+      for (const name in skeleton) {
+        const k = skeleton[name as KeypointName]!;
+        const p = at(`k.${name}`, k)!;
+        out[name as KeypointName] = { x: p.x, y: p.y, score: k.score };
+      }
+      skeleton = out;
+    }
+    return {
+      ...state,
+      leftHand: at("leftHand", state.leftHand),
+      rightHand: at("rightHand", state.rightHand),
+      bodyPosition: at("body", state.bodyPosition),
+      skeleton,
+    };
   }
 
   private updatePlayer(view: TrackView, t: number, gestureEvents: GestureEvent[]): PlayerState {
@@ -677,6 +815,8 @@ export class MotionEngine {
         if (last) rebuilt.set(newId(i, v), { ...last, id: newId(i, v), identity: "locked" });
       });
       this.states = rebuilt;
+      this.points.clear();
+      this.rebuildDisplay();
     }
     this.lastCalibration = result;
     return result;

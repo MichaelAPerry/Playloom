@@ -8,6 +8,7 @@ import {
   trialNeedsAnother,
   runCompatibilityCheck,
   type CompatibilityReport,
+  type FramePacingStats,
   type MotionSettings,
   type PoseSource,
   type ProfileRecommendation,
@@ -265,6 +266,7 @@ export class Tracking {
         const index = ids.indexOf(id);
         progress({ index: index < 0 ? 1 : index + 1, of: ids.length, label: MODE_LABELS[id as TrackingMode] ?? id });
       },
+      this.pacing,
     );
     try {
       localStorage.setItem(CHECK_KEY, JSON.stringify(result));
@@ -276,4 +278,5 @@ export class Tracking {
   }
 
   renderFps: () => number = () => 0;
+  pacing: () => FramePacingStats = () => ({ frames: 0, fps: 0, medianMs: 0, p95Ms: 0, worstMs: 0, longFrames: 0 });
 }

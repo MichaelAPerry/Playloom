@@ -10,7 +10,13 @@ export interface OneEuroOptions {
   dCutoff: number;
 }
 
-export const DEFAULT_ONE_EURO: OneEuroOptions = { minCutoff: 1.5, beta: 0.4, dCutoff: 1 };
+/**
+ * Tuned for positions in screen heights (0..1) with pose results at 10-25 Hz. The earlier defaults
+ * (minCutoff 1.5, beta 0.4, dCutoff 1) were meant for pixel coordinates: with a hand speed of
+ * about 1 screen height per second they raised the cutoff by only 0.4 Hz, which left the cursor
+ * about 80 ms behind the hand. See `packages/core/test/display-motion.test.ts` for the numbers.
+ */
+export const DEFAULT_ONE_EURO: OneEuroOptions = { minCutoff: 1, beta: 8, dCutoff: 2 };
 
 const alpha = (cutoff: number, dt: number): number => {
   const tau = 1 / (2 * Math.PI * cutoff);

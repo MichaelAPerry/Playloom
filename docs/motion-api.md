@@ -65,7 +65,29 @@ right hand to their right sees the cursor move right. "Left" and "right" hands a
 ### Status
 
 `playloom.status` reports `source`, `capabilities`, `trackingHz`, `latencyMs`, `processingMs`,
-`identity`, `needsAction` and `peopleInView`.
+`captureToScreenMs`, `identity`, `needsAction` and `peopleInView`.
+
+### Display-rate motion
+
+Pose results arrive at 10-20 Hz; screens draw at 60 Hz or more. If the host calls
+
+```ts
+engine.advance(now);   // once per rendered frame; same clock as frame timestamps (performance.now())
+```
+
+then `players.get()` / `players.all()` return the state **for that moment**: hands, body position and
+skeleton are interpolated between tracking results and extended past the latest one, by at most 80 ms
+and with damping, so cursors move on every drawn frame and the capture delay is partly compensated. A
+result that is far from the previous one (over 0.35 screen heights) or arrives after a gap (over 250 ms)
+is shown at once, not glided to. Gestures, `present`, `confidence`, identity and `lean` always come from
+real tracking frames, and gesture detection never sees predicted positions. Games and the runtime need no
+change: they read the same API. Without `advance` the API returns the latest tracking result, exactly as
+before, so tests with a manual clock are unaffected and repeatable (the same calls always give the same
+numbers). Options: `new MotionEngine({ displayMotion: { ...DEFAULT_DISPLAY_MOTION, maxPredictMs: 50 } })`
+or `engine.configure({ displayMotion: { enabled: false } })`.
+
+`engine.sourceDiagnostics()` returns what the active camera backend measured (camera size and delivered
+fps, model time, analysed size); the performance panel (`DiagnosticsPanel`) and `buildDiagnostics` use it.
 
 ## Identity: what the engine promises
 
