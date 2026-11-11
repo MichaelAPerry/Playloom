@@ -33,10 +33,13 @@ export interface DiagnosticsPanelOptions {
 const STORAGE_KEY = "playloom.diagnostics";
 const STYLE_ID = "playloom-diagnostics-style";
 const CSS = `
-.plv-diag{position:fixed;top:8px;right:8px;z-index:2147483000;width:min(380px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;
+.plv-diag{position:fixed;bottom:8px;right:8px;z-index:2147483000;width:min(340px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;
   box-sizing:border-box;padding:8px 10px;border-radius:8px;background:rgba(10,12,20,.88);color:#e9edf7;
-  font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;box-shadow:0 2px 12px rgba(0,0,0,.45);text-align:left}
+  font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;box-shadow:0 2px 12px rgba(0,0,0,.45);text-align:left}
 .plv-diag[hidden]{display:none}
+.plv-diag[data-corner=bl]{right:auto;left:8px}
+.plv-diag[data-corner=tl]{right:auto;left:8px;bottom:auto;top:8px}
+.plv-diag[data-corner=tr]{bottom:auto;top:8px}
 .plv-diag h2{margin:0 0 4px;font:600 12px/1.3 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#9fb0d0;display:flex;justify-content:space-between;align-items:center}
 .plv-diag dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:1px 10px}
 .plv-diag dt{color:#8ea0c2;white-space:nowrap}
@@ -48,6 +51,15 @@ const CSS = `
 .plv-diag button:hover{background:#2f4062}
 .plv-diag textarea{width:100%;height:120px;margin-top:6px;box-sizing:border-box;font:11px/1.3 ui-monospace,monospace;background:#0b0e16;color:#e9edf7;border:1px solid #4a5a7a}
 `;
+
+function readCorner(): string {
+  try {
+    const c = localStorage.getItem(STORAGE_KEY + ".corner");
+    return c === "bl" || c === "tl" || c === "tr" ? c : "br";
+  } catch {
+    return "br";
+  }
+}
 
 export class DiagnosticsPanel {
   readonly pacing = new FramePacingMeter();
@@ -91,7 +103,13 @@ export class DiagnosticsPanel {
     close.setAttribute("type", "button");
     close.textContent = "Close";
     close.addEventListener("click", () => this.setVisible(false));
-    row.append(copy, close, this.status);
+    const move = el("button");
+    move.setAttribute("type", "button");
+    move.textContent = "Move";
+    move.title = "Move the box to another corner";
+    move.addEventListener("click", () => this.moveCorner());
+    row.append(copy, move, close, this.status);
+    this.setCorner(readCorner());
     this.root.append(title, this.body, this.hints, row);
     (options.parent ?? document.body).appendChild(this.root);
 
@@ -111,6 +129,21 @@ export class DiagnosticsPanel {
       /* storage can be blocked; the panel then simply starts hidden */
     }
     if (stored) this.setVisible(true, false);
+  }
+
+  private moveCorner(): void {
+    const order = ["br", "bl", "tl", "tr"];
+    const next = order[(order.indexOf(this.root.dataset.corner ?? "br") + 1) % order.length]!;
+    this.setCorner(next);
+    try {
+      localStorage.setItem(STORAGE_KEY + ".corner", next);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private setCorner(corner: string): void {
+    this.root.dataset.corner = corner;
   }
 
   get visible(): boolean {

@@ -33,7 +33,7 @@ Nothing is listed as working unless it was run.
 | Simulator | `packages/simulator` | Two simulated players, keyboard and mouse control, entry/exit, dropout, occlusion, crossing, shuffled order, noise |
 | Recording and playback | `packages/simulator/src/recording.ts` | Keypoints only; replay is event-for-event identical |
 | Debug tooling | `apps/playground` | Skeleton overlay, player cursors, rates, event log, mirror and sensitivity controls |
-| Automated tests | `packages/*/test` | 66 tests (136 after the performance pass) |
+| Automated tests | `packages/*/test` | 66 tests (165 after the performance pass and merge) |
 
 ### Acceptance criterion
 
@@ -259,7 +259,7 @@ cause; the work found real problems in Playloom's own pipeline and added a way t
 | Display-rate cursor motion (`MotionEngine.advance`), bounded prediction, snap on jumps | Done; unit tests (smoothness, bound, no overshoot, snap, determinism) |
 | One Euro retune (`minCutoff` 1, `beta` 8, `dCutoff` 2) | Done; step response, delay and jitter numbers tested against the old settings |
 | One small camera copy per analysis (shared with the backdrop), camera asked again for 640x480 when it delivers more than 960 px, `inferenceWidth` option (default 320) | Done; measured |
-| Camera backdrop `light` / `full` / `off` | Done; default `light` |
+| Camera backdrop drawn from a small cached copy (`backdrop: "off" \| "faint" \| "strong"`; off does no video work) | Done |
 | Frame-pacing meter, `renderP95Ms` in the compatibility report and playground status | Done; unit tests |
 | Performance panel (F3), Console setting, copy-to-clipboard, findings in words | Done; checked in headless Chromium in the playground and the Console |
 
@@ -274,10 +274,10 @@ tell); whether the 80 ms prediction feels right to people (it may overshoot on q
 number, `maxPredictMs`); detection quality at 320 px with other people and lighting (identical on the
 test video only).
 
-Changes to the Console (kept minimal because its `main.ts` is being reworked elsewhere): import and create
-a `DiagnosticsPanel`; a "Show performance details" option in Settings; two lines in the render loop,
-`diagnostics.frame(now)` and `tracking.engine.advance(now)`; and in `tracking.ts`, passing the pacing
-statistics to the device check.
+Changes to the Console (kept minimal): import and create a `DiagnosticsPanel`; a "Show performance details"
+On/Off row in Settings in the existing segmented style; two lines in the render loop, `diagnostics.frame(now)`
+and `tracking.engine.advance(now)`; and in `tracking.ts`, passing the pacing statistics to the device check.
+The automatic speed trial still reads `trackingHz` and is unaffected. MoveNet reports camera size and fps to the panel too.
 
 ## Next
 

@@ -58,7 +58,7 @@ The report contains:
 ## If it runs badly
 
 Press **F3** (or turn on **Show performance details** in the Console's Settings, or the checkbox in the
-playground). A small box appears in the top right corner and updates twice a second. **Copy details**
+playground). A small box appears in the bottom right corner (the **Move** button sends it to another corner) and updates twice a second. **Copy details**
 puts the same information on the clipboard as plain text so it can be pasted into a message. The choice
 is remembered. In plain words, from top to bottom:
 
@@ -95,26 +95,38 @@ software-emulated here and about 2.5 Hz, so real-GPU behaviour is **unverified**
 the owner's PC (an RTX 3070 and an integrated chip) was not available either; the F3 panel exists to find
 out what it does.
 
+Before = the code of branch `claude/blissful-keller-wc4zmn` without this work; after = the same code with it,
+both built and served the same way and measured back to back on the same machine, three runs each (the
+ranges are the runs). The container was busier during these runs than during my first, pre-merge
+measurements, which showed larger gains (for example 0-1 s instead of 0.2-1.7 s in long tasks at x4); treat
+the figures as "same direction, size varies with load".
+
 | Measurement | Before | After |
 |---|---|---|
-| Cursor updates per screen frame (640x480 camera, x1): share of frames in which the hand cursor did not move | 76-78 % | 0 % |
-| Typical cursor step when it moved (px on a 1280 wide canvas) | 9-11 px | 2.3 px (x1), 3.4 px (x4) |
-| Work done in each `requestAnimationFrame` callback, x4, 640x480 camera | mean 16.6 ms | mean 1.0 ms |
-| Same, camera delivering 1920x1080 and refusing a smaller mode | mean 26.6 ms | mean 1.0 ms |
-| Main-thread time to hand one camera picture to the worker, x4, 640x480 | 5.0 ms (`createImageBitmap(video)`) | 2.1 ms (draw into small canvas, includes the backdrop copy) |
-| Same at 1920x1080 | 28.0 ms | 7.8 ms |
-| Frames later than 33 ms in 10 s, x4, 640x480 camera, three runs each | 36, 36, 25 | 24, 11, 18 |
-| Longest main-thread stalls ("long tasks"), same runs | 99, 99, 0 ms in total | 0, 0, 0 ms |
-| Frame time median / 95th percentile, x4, 1080p camera that refuses a smaller mode, three runs each | 50 / 83 ms in all runs; 115-124 late frames; 5.8-6.0 s in long tasks | 33 / 50-67 ms; 75-89 late frames; 0.7-1.5 s in long tasks |
-| Time from camera capture to the motion API (`latencyMs`), x1 | 64-80 ms | 56-64 ms |
-| Time from camera capture to first appearing on screen, x1 | not measured (no such counter) | 62-77 ms; cursors are then drawn up to 80 ms further along the hand's motion |
-| Hand follows a 0.7 Hz swing (simulated 15 Hz tracking, unit test): delay of the smoothed signal | about 80 ms | about 26 ms |
+| Share of screen frames in which the hand cursor did not move (640x480 camera, x1) | 76-77 % | 0 % |
+| Typical cursor step when it moved, px on a 1280 px canvas (x1 / x4) | 9.4 px / 11 px | 2.3 px / 3.4 px |
+| Work in each `requestAnimationFrame` callback, x4, 640x480 camera | mean 22.2 ms | mean 1.8 ms |
+| Same, camera delivering 1920x1080 and refusing a smaller mode | mean 35.3 ms | mean 1.7 ms |
+| `createImageBitmap` call on the page's thread, per analysed picture, x4, 640x480 | 6.9 ms | 0.2 ms (the picture is drawn into a small canvas first; that draw is counted in the next row) |
+| Whole camera-frame callback (grab and hand-off) per camera picture, mean, x4, 640x480 / 1080p | 3.3 / 16.8 ms | 3.0 / 10.5 ms |
+| Frames later than 33 ms in 10 s, x4, 640x480 camera | 66, 110, 132 | 52, 94, 76 |
+| Time inside main-thread stalls over 50 ms ("long tasks"), same runs | 329, 1324, 1686 ms | 333, 1012, 217 ms |
+| Frames later than 33 ms in 10 s, x4, 1080p camera that refuses a smaller mode | 134, 138, 136 | 123, 108, 122 |
+| Median / 95th percentile frame time, same runs | 67 / 100 ms in all three | 50, 33, 50 / 67 ms |
+| Time inside long tasks, same runs | 7.3-7.6 s | 4.6-5.7 s |
+| Tracking updates per second, x4, 640x480 | 10-11 | 11-12 |
+| Frames later than 33 ms with the simulator as input, x4 | 0 | 0 |
+| Camera capture to motion API (`latencyMs`), x1 | 70-82 ms | 71-82 ms (no difference; the model time of about 48 ms dominates) |
+| Camera capture to first appearing on screen, x1 | no such counter | 62-77 ms in the first measurements; cursors are drawn up to 80 ms further along the hand's motion |
+| Smoothed hand behind a 0.7 Hz swing (simulated 15 Hz tracking, unit test) | about 80 ms | about 26 ms |
 | Time to cover 90 % of a step (15 Hz) | 267 ms | 133 ms |
 | Jitter of a still hand (noise 0.004 screen heights, 15 Hz) | 1.89 (x 0.001) | 1.93 |
 
-Runs on this container vary from run to run (the baseline at x4 gave a median frame time of 33 ms in two
-runs and 17 ms in others), which is why the table gives ranges for the noisy items. The clearest
-differences are the stepping of the cursors, the per-frame drawing cost and the 1080p case.
+So the stepping and the per-frame drawing cost are clearly fixed. The stutter at x4 is reduced but not gone:
+at 1080p the remaining cost is reading the camera frame at all, which only a smaller camera mode avoids
+(Playloom now asks for one), and the numbers for the first-pass measurements with that re-request working
+were a median frame time of 16.8 ms. Whether the owner's stutter was this cost or something specific to
+the real graphics driver is **not established**; the F3 panel is there to tell.
 
 What changed, and why each was a cause:
 
@@ -129,7 +141,7 @@ What changed, and why each was a cause:
    and each analysis copied the camera picture with `createImageBitmap(video)`. Reading a video frame is
    expensive, and the cost grows with the camera's resolution: webcams that deliver 720p or 1080p
    regardless of the 640x480 request made it much worse. Now one small copy (320 px wide) is made per
-   analysis, used both for the model and as the backdrop. If the camera delivers more than 960 px, Playloom
+   analysis, used both for the model and as the backdrop (when a tracking backend does not share one, the renderer keeps its own 256 px copy refreshed 15 times a second). If the camera delivers more than 960 px, Playloom
    asks it again for 640x480 (`applyConstraints`).
 4. **Not causes** (measured): the game runtime and canvas drawing took 1.0 ms per frame including text
    outlines at x4 once the video draw was gone; `engine.process` took 0.1-0.9 ms; with the simulator as
@@ -139,5 +151,8 @@ What changed, and why each was a cause:
    smaller size costs no detection quality on this test video (one video only; unverified with other
    people, clothing and lighting).
 
-Settings: in the playground, "Camera picture behind the game" (light, default / full / off), "Picture
-size analysed" (320 / 480 / camera size) and "Display-rate cursor motion" are remembered in local storage.
+Settings: the camera picture behind the game is one option, `backdrop: "off" | "faint" | "strong"`
+(`CanvasRenderOptions`). "off" does no video work at all; faint and strong draw a small cached copy, never
+the live video. In the playground, "Camera picture behind the game", "Picture size analysed" (320 / 480 /
+camera size) and "Display-rate cursor motion" are remembered in local storage. In the Console, Settings has
+"Show performance details" (F3 also toggles it).
