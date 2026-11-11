@@ -1,3 +1,4 @@
+import { cameraPictures } from "@playloom/core";
 import { EFFECT_SECONDS, type GameRuntime, type LiveObject } from "./runtime";
 
 /** Colours for player cursors; the same on every screen so children learn "I am orange". */
@@ -6,12 +7,48 @@ export const PLAYER_COLORS: Record<number, string> = { 1: "#ff9f1c", 2: "#3ec5ff
 const BACKDROP_ALPHA = { off: 0, faint: 0.2, strong: 0.5 } as const;
 const FONT = 'system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif';
 
+/** A small, mirrored copy of a video, refreshed at a limited rate. Used when no tracking backend shares its own. */
+export class CameraBackdrop {
+  readonly canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private lastTime = -1;
+  private lastDraw = -Infinity;
+  private mirrored: boolean | null = null;
+
+  constructor(
+    readonly width = 256,
+    readonly height = 144,
+    private intervalMs = 66,
+  ) {
+    this.canvas = document.createElement("canvas");
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.ctx = this.canvas.getContext("2d")!;
+  }
+
+  /** Copy the video's current picture if it is due and has changed. Returns whether it did. */
+  refresh(video: HTMLVideoElement, now: number, mirror: boolean): boolean {
+    const changedMirror = this.mirrored !== mirror;
+    if (!changedMirror && (now - this.lastDraw < this.intervalMs || video.currentTime === this.lastTime)) return false;
+    this.lastDraw = now;
+    this.lastTime = video.currentTime;
+    this.mirrored = mirror;
+    const ctx = this.ctx;
+    ctx.setTransform(mirror ? -1 : 1, 0, 0, 1, mirror ? this.width : 0, 0);
+    ctx.drawImage(video, 0, 0, this.width, this.height);
+    return true;
+  }
+}
+
+const backdrops = new WeakMap<HTMLVideoElement, CameraBackdrop>();
+
 export interface CanvasRenderOptions {
   /** A camera picture to show faintly behind the game, already mirrored or not as `mirror` says. */
   video?: HTMLVideoElement | null;
   mirror?: boolean;
   /**
-   * How strongly the camera picture shows behind the game. "off" skips drawing it altogether.
+   * How strongly the camera picture shows behind the game. "off" does no video work at all; the other
+   * two draw a small cached copy of the picture (refreshed at tracking rate), not the live video.
    * When omitted the picture is drawn at its original strength (used by the developer playground).
    */
   backdrop?: "off" | "faint" | "strong";
@@ -45,13 +82,25 @@ export function renderToCanvas(ctx: CanvasRenderingContext2D, runtime: GameRunti
   if (video && backdropAlpha > 0 && video.readyState >= 2 && video.videoWidth > 0) {
     // Players see themselves faintly, which makes aiming far easier. The picture is stretched to
     // the scene so that it lines up exactly with the hand cursors, which use the same mapping.
+    // It is drawn from a small copy that is refreshed at tracking rate, never from the full-size
+    // video: reading a 720p or 1080p video frame every screen frame was the main cause of stutter.
+    const mirror = options.mirror ?? true;
+    const shared = cameraPictures.get(video);
+    let picture: CanvasImageSource | undefined = shared;
+    if (!picture) {
+      let copy = backdrops.get(video);
+      if (!copy) backdrops.set(video, (copy = new CameraBackdrop()));
+      copy.refresh(video, performance.now(), mirror);
+      picture = copy.canvas;
+    }
     ctx.save();
     ctx.globalAlpha = backdropAlpha;
-    if (options.mirror ?? true) {
+    // A copy of our own is already mirrored; the picture shared by the tracking backend is as the camera sent it.
+    if (mirror && shared) {
       ctx.translate(W, 0);
       ctx.scale(-1, 1);
     }
-    ctx.drawImage(video, 0, 0, W, H);
+    ctx.drawImage(picture, 0, 0, W, H);
     ctx.restore();
   }
 

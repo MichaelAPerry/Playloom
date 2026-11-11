@@ -24,6 +24,12 @@ export interface OpenCamera {
   stop(): void;
 }
 
+/**
+ * A small copy of the latest picture a backend analysed, kept so that renderers can show the
+ * camera behind a game without reading the full-size video a second time.
+ */
+export const cameraPictures = new WeakMap<HTMLVideoElement, HTMLCanvasElement>();
+
 export class CameraError extends Error {
   constructor(
     public readonly code: "unsupported" | "denied" | "not-found" | "in-use" | "failed",
@@ -80,6 +86,25 @@ export async function openCamera(request: CameraRequest = {}): Promise<OpenCamer
     throw new CameraError("failed", `The camera stream could not be played: ${(err as Error)?.message ?? err}`);
   }
   const track = stream.getVideoTracks()[0];
+  // Browsers treat the requested size as a wish. A camera that nevertheless delivers 720p or 1080p makes
+  // every picture several times more expensive to copy, so ask again for the small mode it almost surely has.
+  const wanted = request.width ?? 640;
+  if (track && video.videoWidth > wanted * 1.5) {
+    try {
+      await track.applyConstraints({
+        width: { ideal: wanted },
+        height: { ideal: request.height ?? 480 },
+        frameRate: { ideal: request.frameRate ?? 30 },
+      });
+      await new Promise<void>((resolve) => {
+        const done = (): void => resolve();
+        video.addEventListener("resize", done, { once: true });
+        setTimeout(done, 600);
+      });
+    } catch {
+      /* the camera has no smaller mode; the analysed picture is reduced later anyway */
+    }
+  }
   return {
     video,
     stream,

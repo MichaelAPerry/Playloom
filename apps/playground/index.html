@@ -64,6 +64,22 @@
           </label>
           <label class="check"><input type="checkbox" id="mirror" checked /> Mirror picture</label>
           <label class="check"><input type="checkbox" id="overlay" checked /> Debug skeleton overlay</label>
+          <label>Camera picture behind the game
+            <select id="backdrop">
+              <option value="faint">Faint (default)</option>
+              <option value="strong">Strong</option>
+              <option value="off">Off (no video work at all)</option>
+            </select>
+          </label>
+          <label>Picture size analysed
+            <select id="inference">
+              <option value="320">320 px wide (default)</option>
+              <option value="480">480 px wide</option>
+              <option value="0">Camera's own size</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="smooth-motion" checked /> Display-rate cursor motion</label>
+          <label class="check"><input type="checkbox" id="diagnostics" /> Show performance details (F3)</label>
           <label>Gesture sensitivity <output id="sensitivity-out">1.0</output>
             <input type="range" id="sensitivity" min="0.5" max="2" step="0.1" value="1" />
           </label>

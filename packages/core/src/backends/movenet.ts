@@ -1,7 +1,8 @@
 import { onVideoFrame, openCamera, type CameraRequest, type OpenCamera } from "../camera/camera";
 import type { MoveNetWorkerFrame, MoveNetWorkerInit, MoveNetWorkerReply } from "./movenet-worker";
 import type { MoveNetRunner } from "./movenet-runner";
-import type { FrameSink, PoseSource, SourceCapabilities } from "../types";
+import { RateMeter } from "../performance/meters";
+import type { FrameSink, PoseSource, SourceCapabilities, SourceDiagnostics } from "../types";
 
 export { letterbox, personsFromMoveNet, inputToFrame, rgbaToRgbInt32 } from "./movenet-math";
 export type { Letterbox, MoveNetMappingOptions } from "./movenet-math";
@@ -57,6 +58,8 @@ export class MoveNetPoseSource implements PoseSource {
   private worker: Worker | null = null;
   private stopLoop: (() => void) | null = null;
   private lastInference = -Infinity;
+  private cameraRate = new RateMeter(2000);
+  private skipRate = new RateMeter(2000);
 
   constructor(options: Partial<MoveNetOptions> = {}) {
     this.options = { ...DEFAULT_MOVENET_OPTIONS, ...options };
@@ -117,7 +120,11 @@ export class MoveNetPoseSource implements PoseSource {
           ready = true;
           // One frame in flight at a time: a slow model simply sees fewer frames, never a backlog.
           this.stopLoop = onVideoFrame(video, (captureTime) => {
-            if (busy || captureTime - this.lastInference < minInterval) return;
+            this.cameraRate.tick(performance.now());
+            if (busy || captureTime - this.lastInference < minInterval) {
+              this.skipRate.tick(performance.now());
+              return;
+            }
             busy = true;
             this.lastInference = captureTime;
             createImageBitmap(video).then(
@@ -156,6 +163,7 @@ export class MoveNetPoseSource implements PoseSource {
     const maxPeople = this.capabilities.maxPeople;
     let busy = false;
     this.stopLoop = onVideoFrame(video, (captureTime) => {
+      this.cameraRate.tick(performance.now());
       if (busy || this.runner !== runner || captureTime - this.lastInference < minInterval) return;
       busy = true;
       this.lastInference = captureTime;
@@ -170,6 +178,15 @@ export class MoveNetPoseSource implements PoseSource {
         },
       );
     });
+  }
+
+  diagnostics(): SourceDiagnostics {
+    return {
+      delegate: "ONNX (processor)",
+      thread: this.thread ?? undefined,
+      camera: this.camera ? { width: this.camera.width, height: this.camera.height, fps: this.cameraRate.rate() } : undefined,
+      skippedPerSecond: this.skipRate.rate(),
+    };
   }
 
   async stop(): Promise<void> {

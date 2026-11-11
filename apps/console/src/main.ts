@@ -1,4 +1,4 @@
-import { loadSettings, PlayerJoin, RateMeter, saveSettings, type KeypointName, type PlayerState } from "@playloom/core";
+import { DiagnosticsPanel, loadSettings, PlayerJoin, RateMeter, saveSettings, type KeypointName, type PlayerState } from "@playloom/core";
 import { GameRuntime, PLAYER_COLORS, renderToCanvas, WebAudioPlayer } from "@playloom/runtime";
 import { PACKAGE_LIMITS, packageFileName, unpackGame, type GameDefinition } from "@playloom/sdk";
 import { bundledGames, exportGame, installedGames, installGame, loadImages, removeGame, type LibraryEntry } from "./library";
@@ -57,6 +57,14 @@ const persist = (): void => {
 };
 const tracking = new Tracking(settings, stage);
 const api = tracking.engine.api;
+const diagnostics = new DiagnosticsPanel({
+  engine: tracking.engine,
+  canvas: () => stage,
+  onChange: () => {
+    if (screen === "settings") renderSettings();
+  },
+});
+tracking.pacing = () => diagnostics.pacing.stats();
 const audio = new WebAudioPlayer();
 audio.volume = prefs.volume;
 for (const type of ["pointerdown", "keydown"] as const) window.addEventListener(type, () => audio.unlock(), { once: true });
@@ -914,6 +922,10 @@ function renderSettings(): void {
           savePrefs();
           renderSettings();
         })),
+        row("Show performance details", "A small box with camera, tracking and screen speed. Press F3 any time. Useful when asking for help.", onOff("perf", "Show performance details", diagnostics.visible, (value) => {
+          diagnostics.setVisible(value);
+          renderSettings();
+        })),
         row("Sound", "Game sound effects.", seg("volume", "Sound", volumes, nearest(volumes, prefs.volume), (value) => {
           prefs.volume = audio.volume = value;
           savePrefs();
@@ -1007,6 +1019,8 @@ let lastSettingsState = tracking.state;
 
 function frame(now: number): void {
   renderRate.tick(now);
+  diagnostics.frame(now);
+  tracking.engine.advance(now);
   const dt = last ? (now - last) / 1000 : 0;
   last = now;
   if (screen === "play" && playing) {

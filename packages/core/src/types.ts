@@ -91,6 +91,24 @@ export interface PoseSource {
   readonly capabilities: SourceCapabilities;
   start(sink: FrameSink): Promise<void>;
   stop(): Promise<void>;
+  /** Optional measurements for the performance panel; only camera backends have them. */
+  diagnostics?(): SourceDiagnostics;
+}
+
+/** What a camera backend can tell about itself, all measured while running. */
+export interface SourceDiagnostics {
+  /** "GPU" or "CPU" for pose estimation. */
+  delegate?: string;
+  /** Where the model runs: a worker thread or the page's own thread. */
+  thread?: string;
+  /** What the camera really delivers, and how often it delivers a new picture (every picture, not only analysed ones). */
+  camera?: { width: number; height: number; fps: number };
+  /** Size of the picture handed to the model. */
+  inference?: { width: number; height: number };
+  /** Time the model needed per picture, milliseconds. */
+  modelMs?: { median: number; p95: number; worst: number };
+  /** Camera pictures skipped because the model was still busy, per second. */
+  skippedPerSecond?: number;
 }
 
 export type Unsubscribe = () => void;

@@ -1,6 +1,8 @@
-import { onVideoFrame, openCamera, type CameraRequest, type OpenCamera } from "../camera/camera";
+import { cameraPictures, onVideoFrame, openCamera, type CameraRequest, type OpenCamera } from "../camera/camera";
 import type { PoseWorkerFrame, PoseWorkerInit, PoseWorkerReply } from "./pose-worker";
-import type { FrameSink, KeypointName, PoseSource, RawPerson, Skeleton, SourceCapabilities } from "../types";
+import { RateMeter } from "../performance/meters";
+import { RollingSamples } from "../performance/frame-pacing";
+import type { FrameSink, KeypointName, PoseSource, RawPerson, Skeleton, SourceCapabilities, SourceDiagnostics } from "../types";
 
 /**
  * Standard / Enhanced backend: MediaPipe Pose Landmarker with several people per frame.
@@ -74,6 +76,18 @@ export interface MediaPipeOptions {
    * runs on the page's own thread instead.
    */
   worker: boolean;
+  /**
+   * Width in pixels of the picture handed to the model. Cameras may deliver 1280x720 or 1920x1080
+   * whatever was asked for, and copying such a picture for every analysis costs main-thread time
+   * while the model itself reduces it to 256x256 anyway. 0 sends the camera's own size.
+   */
+  inferenceWidth: number;
+}
+
+/** Size of the picture analysed for a camera of `width` x `height`; never larger than the camera's own. */
+export function inferenceSize(width: number, height: number, inferenceWidth: number): { width: number; height: number } {
+  if (inferenceWidth <= 0 || width <= inferenceWidth) return { width, height };
+  return { width: Math.round(inferenceWidth), height: Math.max(1, Math.round((inferenceWidth * height) / width)) };
 }
 
 export const DEFAULT_MEDIAPIPE_OPTIONS: MediaPipeOptions = {
@@ -86,6 +100,7 @@ export const DEFAULT_MEDIAPIPE_OPTIONS: MediaPipeOptions = {
   minDetectionConfidence: 0.5,
   minTrackingConfidence: 0.5,
   worker: true,
+  inferenceWidth: 320,
 };
 
 interface Landmarker {
@@ -108,6 +123,12 @@ export class MediaPipePoseSource implements PoseSource {
   private worker: Worker | null = null;
   private stopLoop: (() => void) | null = null;
   private lastInference = -Infinity;
+  private cameraRate = new RateMeter(2000);
+  private skipRate = new RateMeter(2000);
+  private modelTimes = new RollingSamples(60);
+  private size: { width: number; height: number } | null = null;
+  private grabCanvas: HTMLCanvasElement | null = null;
+  private grabContext: CanvasRenderingContext2D | null = null;
 
   constructor(options: Partial<MediaPipeOptions> = {}) {
     this.options = { ...DEFAULT_MEDIAPIPE_OPTIONS, ...options };
@@ -119,6 +140,19 @@ export class MediaPipePoseSource implements PoseSource {
     const o = this.options;
     // Open the camera first: if there is none, there is no point loading a model.
     this.camera = await openCamera(o.camera);
+    this.size = inferenceSize(this.camera.width, this.camera.height, o.inferenceWidth);
+    this.grabCanvas = document.createElement("canvas");
+    this.grabCanvas.width = this.size.width;
+    this.grabCanvas.height = this.size.height;
+    this.grabContext = this.grabCanvas.getContext("2d");
+    cameraPictures.set(this.camera.video, this.grabCanvas);
+    this.cameraRate.reset();
+    this.skipRate.reset();
+    this.modelTimes.reset();
+    // One line, no network: lets whoever reads the console see what the camera really delivers.
+    console.info(
+      `[playloom] camera ${this.camera.width}x${this.camera.height} "${this.camera.label}", analysing at ${this.size.width}x${this.size.height}`,
+    );
     try {
       if (o.worker && typeof Worker !== "undefined" && typeof createImageBitmap === "function") {
         try {
@@ -165,10 +199,22 @@ export class MediaPipePoseSource implements PoseSource {
           this.activeDelegate = message.delegate;
           // One frame in flight at a time: a slow model simply sees fewer frames, never a backlog.
           this.stopLoop = onVideoFrame(video, (captureTime) => {
-            if (busy || captureTime - this.lastInference < minInterval) return;
+            // Every camera picture is counted here, so the camera's own rate can be told apart from the model's.
+            const arrived = performance.now();
+            this.cameraRate.tick(arrived);
+            if (busy || captureTime - this.lastInference < minInterval) {
+              this.skipRate.tick(arrived);
+              return;
+            }
             busy = true;
             this.lastInference = captureTime;
-            createImageBitmap(video).then(
+            // One copy of the camera picture per analysis, at the size the model uses. Drawing the video
+            // into a small canvas measured cheaper on the page's thread than createImageBitmap(video),
+            // with or without its resize options, and the same copy serves as the backdrop behind the
+            // game, so the full-size picture is read only once.
+            const grabCtx = this.grabContext!;
+            grabCtx.drawImage(video, 0, 0, this.size!.width, this.size!.height);
+            createImageBitmap(this.grabCanvas!).then(
               (bitmap) => {
                 if (this.worker !== worker) return bitmap.close();
                 const frame: PoseWorkerFrame = { type: "frame", bitmap, time: captureTime };
@@ -180,6 +226,7 @@ export class MediaPipePoseSource implements PoseSource {
           resolve();
         } else if (message.type === "result") {
           busy = false;
+          this.modelTimes.add(message.inferenceMs);
           if (this.worker === worker) sink({ timestamp: message.time, aspect, mirrored: false, people: message.poses.map(personFromLandmarks) });
         } else {
           busy = false;
@@ -227,13 +274,35 @@ export class MediaPipePoseSource implements PoseSource {
     const { video } = this.camera!;
     const aspect = this.camera!.width / this.camera!.height;
     const minInterval = o.maxHz > 0 ? 1000 / o.maxHz : 0;
+    const size = this.size!;
+    const small = this.grabCanvas;
+    const smallCtx = this.grabContext;
     this.stopLoop = onVideoFrame(video, (captureTime) => {
+      this.cameraRate.tick(performance.now());
       if (!this.landmarker || captureTime - this.lastInference < minInterval) return;
       this.lastInference = captureTime;
+      let input: HTMLVideoElement | HTMLCanvasElement = video;
+      if (small && smallCtx) {
+        smallCtx.drawImage(video, 0, 0, size.width, size.height);
+        input = small;
+      }
+      const began = performance.now();
       // MediaPipe requires strictly increasing timestamps.
-      const result = this.landmarker.detectForVideo(video, performance.now());
+      const result = this.landmarker.detectForVideo(input as HTMLVideoElement, began);
+      this.modelTimes.add(performance.now() - began);
       sink({ timestamp: captureTime, aspect, mirrored: false, people: result.landmarks.map(personFromLandmarks) });
     });
+  }
+
+  diagnostics(): SourceDiagnostics {
+    return {
+      delegate: this.activeDelegate ?? undefined,
+      thread: this.thread ?? undefined,
+      camera: this.camera ? { width: this.camera.width, height: this.camera.height, fps: this.cameraRate.rate() } : undefined,
+      inference: this.size ?? undefined,
+      modelMs: { median: this.modelTimes.quantile(0.5), p95: this.modelTimes.quantile(0.95), worst: this.modelTimes.max() },
+      skippedPerSecond: this.skipRate.rate(),
+    };
   }
 
   async stop(): Promise<void> {
@@ -241,8 +310,10 @@ export class MediaPipePoseSource implements PoseSource {
     this.stopLoop = null;
     this.worker?.terminate();
     this.worker = null;
+    if (this.camera) cameraPictures.delete(this.camera.video);
     this.camera?.stop();
     this.camera = null;
+    this.grabCanvas = this.grabContext = null;
     this.landmarker?.close();
     this.landmarker = null;
     this.thread = null;

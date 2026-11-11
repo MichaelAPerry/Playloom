@@ -1,4 +1,5 @@
 import {
+  DiagnosticsPanel,
   listCameras,
   loadSettings,
   MediaPipePoseSource,
@@ -43,6 +44,48 @@ const notice = $("notice");
 const settings = loadSettings(localStorage);
 const engine = new MotionEngine({ mirror: settings.mirror, sensitivity: settings.sensitivity, thresholds: settings.thresholds });
 const api = engine.api;
+
+// Playground-only choices that affect speed, remembered between visits.
+const PREFS_KEY = "playloom.playground-prefs";
+const prefs = { backdrop: "faint" as "off" | "faint" | "strong", inferenceWidth: 320, smoothMotion: true };
+try {
+  Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}"));
+} catch {
+  /* defaults */
+}
+if (!(["off", "faint", "strong"] as string[]).includes(prefs.backdrop)) prefs.backdrop = "faint";
+const savePrefs = (): void => {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* ignore */
+  }
+};
+const backdropSelect = $<HTMLSelectElement>("backdrop");
+const inferenceSelect = $<HTMLSelectElement>("inference");
+const smoothBox = $<HTMLInputElement>("smooth-motion");
+const diagBox = $<HTMLInputElement>("diagnostics");
+backdropSelect.value = prefs.backdrop;
+inferenceSelect.value = String(prefs.inferenceWidth);
+smoothBox.checked = prefs.smoothMotion;
+engine.configure({ displayMotion: { enabled: prefs.smoothMotion } });
+const diagnostics = new DiagnosticsPanel({ engine, canvas: () => canvas, onChange: (v) => (diagBox.checked = v) });
+diagBox.checked = diagnostics.visible;
+diagBox.addEventListener("change", () => diagnostics.setVisible(diagBox.checked));
+backdropSelect.addEventListener("change", () => {
+  prefs.backdrop = backdropSelect.value as typeof prefs.backdrop;
+  savePrefs();
+});
+smoothBox.addEventListener("change", () => {
+  prefs.smoothMotion = smoothBox.checked;
+  engine.configure({ displayMotion: { enabled: prefs.smoothMotion } });
+  savePrefs();
+});
+inferenceSelect.addEventListener("change", () => {
+  prefs.inferenceWidth = Number(inferenceSelect.value);
+  savePrefs();
+  if (sourceSelect.value.startsWith("mediapipe")) void useSource(sourceSelect.value);
+});
 
 let source: PoseSource | null = null;
 let simControls: SimulatorControls | null = null;
@@ -157,11 +200,12 @@ function recordable(inner: PoseSource): PoseSource {
     capabilities: inner.capabilities,
     start: (sink: FrameSink) => inner.start((frame) => (recorder ? recorder.tap(sink)(frame) : sink(frame))),
     stop: () => inner.stop(),
+    diagnostics: () => inner.diagnostics?.() ?? {},
   };
 }
 
 const makeMediaPipe = (delegate: "GPU" | "CPU" = "GPU"): MediaPipePoseSource =>
-  new MediaPipePoseSource({ delegate, camera: { deviceId: cameraSelect.value || undefined, width: 640, height: 480 } });
+  new MediaPipePoseSource({ delegate, inferenceWidth: prefs.inferenceWidth, camera: { deviceId: cameraSelect.value || undefined, width: 640, height: 480 } });
 const makeMoveNet = (): MoveNetPoseSource =>
   new MoveNetPoseSource({ camera: { deviceId: cameraSelect.value || undefined, width: 640, height: 480 } });
 const makeLite = (): MotionLiteSource => new MotionLiteSource({ camera: { deviceId: cameraSelect.value || undefined } });
@@ -402,6 +446,7 @@ $("benchmark").addEventListener("click", async () => {
       ],
       () => renderRate.rate(),
       (message) => (reportBox.textContent = message),
+      () => diagnostics.pacing.stats(),
     );
     const text = JSON.stringify({ recommendation, report }, null, 2);
     reportBox.textContent = `Recommended profile: ${recommendation.profile.toUpperCase()}\n${recommendation.reasons.join("\n")}\n\n${text}`;
@@ -424,11 +469,13 @@ let lastStats = 0;
 let lastFrame = 0;
 function frame(now: number): void {
   renderRate.tick(now);
+  diagnostics.frame(now);
+  engine.advance(now);
   const elapsed = lastFrame ? (now - lastFrame) / 1000 : 0;
   lastFrame = now;
   if (runtime) {
     runtime.update(elapsed);
-    renderToCanvas(ctx, runtime, { video: currentVideo(), mirror: mirrorBox.checked, images });
+    renderToCanvas(ctx, runtime, { video: currentVideo(), mirror: mirrorBox.checked, backdrop: prefs.backdrop, images });
   } else {
     draw(ctx, api, {
       video: currentVideo(),
@@ -441,6 +488,7 @@ function frame(now: number): void {
   if (now - lastStats > 250) {
     lastStats = now;
     const s = api.status;
+    const pacing = diagnostics.pacing.stats();
     const present = api.players.all().filter((p) => p.present).length;
     $("stats").innerHTML =
       stat("Source", s.source ?? "none") +
@@ -448,6 +496,8 @@ function frame(now: number): void {
       stat("People in view", `${s.peopleInView}`) +
       stat("Tracking", `${s.trackingHz.toFixed(0)} Hz`, s.running && s.trackingHz < 12) +
       stat("Render", `${renderRate.rate().toFixed(0)} fps`) +
+      stat("Frame p95", `${pacing.p95Ms.toFixed(0)} ms`, pacing.p95Ms > 33.4) +
+      stat("Worst", `${pacing.worstMs.toFixed(0)} ms`) +
       stat("Latency", `${s.latencyMs.toFixed(0)} ms`, s.latencyMs > 150) +
       stat("Engine", `${s.processingMs.toFixed(2)} ms`) +
       stat("Identity", s.identity, s.identity === "uncertain");
@@ -472,4 +522,4 @@ void useSource("simulator");
 requestAnimationFrame(frame);
 
 // Exposed for automated browser tests and for poking around in the console.
-(window as unknown as { playloom: unknown }).playloom = { engine, api, getSource: () => source, getRuntime: () => runtime };
+(window as unknown as { playloom: unknown }).playloom = { engine, api, getSource: () => source, getRuntime: () => runtime, diagnostics };

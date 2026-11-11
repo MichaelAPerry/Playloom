@@ -33,7 +33,7 @@ Nothing is listed as working unless it was run.
 | Simulator | `packages/simulator` | Two simulated players, keyboard and mouse control, entry/exit, dropout, occlusion, crossing, shuffled order, noise |
 | Recording and playback | `packages/simulator/src/recording.ts` | Keypoints only; replay is event-for-event identical |
 | Debug tooling | `apps/playground` | Skeleton overlay, player cursors, rates, event log, mirror and sensitivity controls |
-| Automated tests | `packages/*/test` | 66 tests |
+| Automated tests | `packages/*/test` | 66 tests (165 after the performance pass and merge) |
 
 ### Acceptance criterion
 
@@ -247,6 +247,37 @@ neither of which has been measured.
 Rebuilt the Console's look and flow after the owner's first try: no timers or auto-advance (dialogs and inline text replace toasts; the device check and speed trial show step progress), a consistent header with Back and a Pause button in games, focus rings, segmented settings, an arrow-key fallback so every control is reachable, hand cursors with halo, number and L/R tag, outlined HUD text, a camera backdrop option, SVG icons, and a layout in em units that scales with the window.
 
 Checked (headless Chromium, built app, fake camera video, keyboard and mouse): home, alert, settings, setup, both games, pause, results, install and "not a game" dialogs at 1024x600, 1280x720 and 1920x1080 (home also at 800x500, 1366x768, 1000x900, 3840x2160): no horizontal scroll and nothing off the right edge; a graph walk of arrow-key moves reached every control on home and Settings; `pnpm check` passes (122 tests). Not verified: a real webcam, real families or children reading the wording, a gamepad, a real TV, and the Windows app.
+
+## Performance pass (2026-11-10)
+
+The owner played the live demo on a Windows PC (RTX 3070 plus integrated graphics, 1920x1080 at 60 Hz) and
+reported cursor lag, jerky cursor steps and whole-screen stutter. Weak hardware is therefore not the likely
+cause; the work found real problems in Playloom's own pipeline and added a way to find out more.
+
+| Item | State |
+|---|---|
+| Display-rate cursor motion (`MotionEngine.advance`), bounded prediction, snap on jumps | Done; unit tests (smoothness, bound, no overshoot, snap, determinism) |
+| One Euro retune (`minCutoff` 1, `beta` 8, `dCutoff` 2) | Done; step response, delay and jitter numbers tested against the old settings |
+| One small camera copy per analysis (shared with the backdrop), camera asked again for 640x480 when it delivers more than 960 px, `inferenceWidth` option (default 320) | Done; measured |
+| Camera backdrop drawn from a small cached copy (`backdrop: "off" \| "faint" \| "strong"`; off does no video work) | Done |
+| Frame-pacing meter, `renderP95Ms` in the compatibility report and playground status | Done; unit tests |
+| Performance panel (F3), Console setting, copy-to-clipboard, findings in words | Done; checked in headless Chromium in the playground and the Console |
+
+Measurements and exactly how they were made are in [performance.md](performance.md). They come from a
+**GPU-less cloud container with the main thread CPU-throttled**, a looped video file and no physical
+webcam, so they show that the work per frame and the stepping went away, not how a real PC behaves.
+
+Not verified: any real webcam; real GPU behaviour of the GPU delegate in a worker (the browser stalls on
+ReadPixels, shares the GPU process with page compositing and may be on the integrated chip on a hybrid
+laptop; the panel shows the delegate, the model time and the adapter name so that the owner's report will
+tell); whether the 80 ms prediction feels right to people (it may overshoot on quick reversals; it is one
+number, `maxPredictMs`); detection quality at 320 px with other people and lighting (identical on the
+test video only).
+
+Changes to the Console (kept minimal): import and create a `DiagnosticsPanel`; a "Show performance details"
+On/Off row in Settings in the existing segmented style; two lines in the render loop, `diagnostics.frame(now)`
+and `tracking.engine.advance(now)`; and in `tracking.ts`, passing the pacing statistics to the device check.
+The automatic speed trial still reads `trackingHz` and is unaffected. MoveNet reports camera size and fps to the panel too.
 
 ## Next
 

@@ -25,7 +25,7 @@ export interface PoseWorkerFrame {
 export type PoseWorkerReply =
   | { type: "ready"; delegate: "GPU" | "CPU" }
   | { type: "error"; message: string }
-  | { type: "result"; time: number; poses: Array<Array<{ x: number; y: number; visibility?: number }>> };
+  | { type: "result"; time: number; inferenceMs: number; poses: Array<Array<{ x: number; y: number; visibility?: number }>> };
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 const reply = (message: PoseWorkerReply): void => scope.postMessage(message);
@@ -65,8 +65,10 @@ scope.onmessage = (event: MessageEvent<PoseWorkerInit | PoseWorkerFrame>) => {
     if (!landmarker) throw new Error("Pose worker used before it was ready");
     // MediaPipe needs strictly increasing timestamps.
     lastStamp = Math.max(lastStamp + 1, Math.round(time));
+    const began = performance.now();
     const result = landmarker.detectForVideo(bitmap, lastStamp);
-    reply({ type: "result", time, poses: result.landmarks.map((pose) => pose.map((p) => ({ x: p.x, y: p.y, visibility: p.visibility }))) });
+    const inferenceMs = performance.now() - began;
+    reply({ type: "result", time, inferenceMs, poses: result.landmarks.map((pose) => pose.map((p) => ({ x: p.x, y: p.y, visibility: p.visibility }))) });
   } catch (err) {
     reply({ type: "error", message: (err as Error)?.message ?? String(err) });
   } finally {

@@ -28,6 +28,12 @@ export interface CompatibilityReport {
   userAgent: string;
   camera: { available: boolean; count: number; label?: string; width?: number; height?: number; error?: string };
   renderFps: number;
+  /** 95 % of screen frames arrived within this many milliseconds while tracking ran. */
+  renderP95Ms?: number;
+  /** Longest gap between two screen frames while tracking ran, milliseconds. */
+  renderWorstMs?: number;
+  /** Screen frames later than 33 ms while tracking ran. */
+  renderLongFrames?: number;
   /** JS heap in megabytes where the browser exposes it. */
   memoryMb?: number;
   cpuCores?: number;
@@ -48,6 +54,8 @@ export const STANDARD_MIN_HZ = 12;
 export const ENHANCED_MIN_HZ = 24;
 export const ENHANCED_MAX_LATENCY_MS = 120;
 export const MIN_RENDER_FPS = 24;
+/** Above this, one frame in twenty is late enough (two refreshes at 60 Hz) to be seen as a hitch. */
+export const MAX_RENDER_P95_MS = 33.4;
 
 export function recommendProfile(report: CompatibilityReport): ProfileRecommendation {
   const reasons: string[] = [];
@@ -58,6 +66,8 @@ export function recommendProfile(report: CompatibilityReport): ProfileRecommenda
   }
   if (report.renderFps > 0 && report.renderFps < MIN_RENDER_FPS) {
     reasons.push(`Rendering reached only ${report.renderFps.toFixed(0)} fps; games may stutter.`);
+  } else if (report.renderP95Ms !== undefined && report.renderP95Ms > MAX_RENDER_P95_MS) {
+    reasons.push(`Screen frames were uneven (95% within ${report.renderP95Ms.toFixed(0)} ms, worst ${(report.renderWorstMs ?? 0).toFixed(0)} ms); games may stutter.`);
   }
 
   const working = report.backends.filter((b) => !b.error && b.trackingHz > 0);
