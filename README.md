@@ -1,28 +1,22 @@
 # Playloom
 
-**Play together. Create anything.**
+Playloom turns a computer and a webcam into a two-player motion game console. The camera
+frames stay on the device. You can also practise with a keyboard and mouse.
 
-Playloom is a free, open-source motion gaming platform. It turns a spare PC or a compatible Android TV
-box, plus an ordinary webcam, into an offline two-player motion console — and it is being built so that
-anyone can make their own motion games without writing code.
+**[Open the browser demo](https://michaelaperry.github.io/Playloom/)** ·
+[Desktop builds](#windows-and-linux-app) · [Project status](docs/status.md)
 
-- **Playloom Console** — a family-friendly launcher for motion games. *(planned, Milestone 3)*
-- **Playloom Engine** — camera tracking, player identity, gestures and the game runtime. *(in progress)*
-- **Playloom Studio** — a visual game maker. *(planned, Milestone 5)*
+![The browser Console in practice mode, showing Mole Mayhem and Slice Party](docs/console-practice.png)
 
-No accounts, no subscriptions, no advertising, no cloud. Camera pictures are processed on the device and
-never leave it. See [docs/privacy.md](docs/privacy.md).
+## What's available
 
-## Where the project is
+The full-screen Console launches **Mole Mayhem** and **Slice Party**. Both games are data
+files interpreted by the same rules runtime. The engine handles pose tracking, player identity
+and gestures. A simulator lets developers exercise those rules with repeatable inputs.
 
-Milestones 1–3 are built: motion tracking and a simulator, a game format with a rules runtime, two games
-(**Mole Mayhem** and **Slice Party**) that are plain data files, and the **Console** — a full-screen
-launcher with player setup, settings and game installation, packaged as a desktop app for Windows and
-Linux. Android and Studio do not exist yet.
-
-Most automated testing uses simulated players and synthetic video, and Playloom has also been tested with a real
-webcam and real players (my students). What has and has not been
-verified is recorded in [docs/status.md](docs/status.md).
+**Status: Active.** The browser Console and Windows and Linux desktop builds are available.
+Development has included webcam sessions with students. Most automated tests use simulated
+players or synthetic video. Android support and the visual Studio are planned.
 
 ## Try it in a browser (no install)
 

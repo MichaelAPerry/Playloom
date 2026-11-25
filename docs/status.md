@@ -5,6 +5,10 @@ Last updated: 2026-11-10
 This document records what has been built, how it was tested, and what has **not** been verified.
 Nothing is listed as working unless it was run.
 
+The results below describe the recorded development checks. The maintainer subsequently
+reported using a real webcam with students. The session configuration and results for
+individual camera acceptance tests are still to be documented.
+
 ## Summary
 
 | Milestone | State |
