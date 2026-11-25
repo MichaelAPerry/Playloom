@@ -1,7 +1,7 @@
 # Playloom
 
 Playloom turns a computer and a webcam into a two-player motion game console. The camera
-frames stay on the device. You can also practise with a mouse or touch input.
+frames stay on the device. You can also practise with a keyboard and mouse.
 
 **[Open the browser demo](https://michaelaperry.github.io/Playloom/)** ·
 [Desktop builds](#windows-and-linux-app) · [Project status](docs/status.md)
