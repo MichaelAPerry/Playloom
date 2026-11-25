@@ -6,6 +6,8 @@ frames stay on the device. You can also practise with a mouse or touch input.
 **[Open the browser demo](https://michaelaperry.github.io/Playloom/)** ·
 [Desktop builds](#windows-and-linux-app) · [Project status](docs/status.md)
 
+![The browser Console in practice mode, showing Mole Mayhem and Slice Party](docs/console-practice.png)
+
 ## What's available
 
 The full-screen Console launches **Mole Mayhem** and **Slice Party**. Both games are data
