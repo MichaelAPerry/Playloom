@@ -20,7 +20,8 @@ Milestones 1–3 are built: motion tracking and a simulator, a game format with 
 launcher with player setup, settings and game installation, packaged as a desktop app for Windows and
 Linux. Android and Studio do not exist yet.
 
-Almost all testing so far has used simulated players and synthetic video. What has and has not been
+Most automated testing uses simulated players and synthetic video, and Playloom has also been tested with a real
+webcam and real players (my students). What has and has not been
 verified is recorded in [docs/status.md](docs/status.md).
 
 ## Try it in a browser (no install)
